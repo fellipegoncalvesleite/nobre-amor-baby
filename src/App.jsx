@@ -15,6 +15,8 @@ import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import LoginPage from './pages/LoginPage';
 import AdminPage from './pages/AdminPage';
+import AdminOrdersPage from './pages/AdminOrdersPage';
+import AdminOrderDetailPage from './pages/AdminOrderDetailPage';
 import DebugPage from './pages/DebugPage';
 import StaticPage from './pages/StaticPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -53,6 +55,8 @@ function App() {
           <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
           <Route path="/entrar" element={<LoginPage />} />
           <Route path="/admin" element={<ProtectedRoute role="manager"><AdminPage /></ProtectedRoute>} />
+          <Route path="/admin/pedidos" element={<ProtectedRoute role="manager"><AdminOrdersPage /></ProtectedRoute>} />
+          <Route path="/admin/pedidos/:orderCode" element={<ProtectedRoute role="manager"><AdminOrderDetailPage /></ProtectedRoute>} />
           <Route path="/debug" element={<ProtectedRoute role="debug"><DebugPage /></ProtectedRoute>} />
           <Route path="/sobre" element={<StaticPage page="sobre" />} />
           <Route path="/faq" element={<StaticPage page="faq" />} />
