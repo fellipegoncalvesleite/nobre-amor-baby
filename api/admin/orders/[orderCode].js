@@ -1,8 +1,10 @@
 /**
- * GET /api/admin/orders/[orderCode] — single order detail (protected).
+ * /api/admin/orders/[orderCode]
+ *   GET   — single order detail (protected)
+ *   PATCH — update status / notes (protected)
  *
  * Returns 200: { order: { ...orderFields, items: [...] } }
- * Errors:  401 / 404 / 405 / 500 — always JSON
+ * Errors:  400 / 401 / 404 / 405 / 500 — always JSON
  */
 
 /* eslint-disable no-undef */
@@ -13,14 +15,16 @@ function json(res, status, body) {
   return res.status(status).json(body);
 }
 
+const ALLOWED_STATUSES = ['new', 'confirmed', 'rejected'];
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-key');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  if (req.method !== 'GET') {
-    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET.' });
+  if (req.method !== 'GET' && req.method !== 'PATCH') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET or PATCH.' });
   }
 
   /* ── auth ──────────────────────────────────────── */
@@ -45,7 +49,69 @@ export default async function handler(req, res) {
       return json(res, 400, { error: 'bad_request', message: 'orderCode is required.' });
     }
 
-    /* ── fetch order ────────────────────────────── */
+    /* ── PATCH: update order ────────────────────── */
+    if (req.method === 'PATCH') {
+      const body = req.body || {};
+      const updates = {};
+
+      // Status change
+      if (body.status !== undefined) {
+        if (!ALLOWED_STATUSES.includes(body.status)) {
+          return json(res, 400, {
+            error: 'invalid_status',
+            message: `Status inválido. Permitidos: ${ALLOWED_STATUSES.join(', ')}`,
+          });
+        }
+
+        updates.status = body.status;
+
+        if (body.status === 'confirmed') {
+          updates.confirmed_at = new Date().toISOString();
+          updates.rejected_at = null;
+          updates.rejected_reason = null;
+        } else if (body.status === 'rejected') {
+          const reason = (body.rejected_reason || '').trim();
+          if (!reason) {
+            return json(res, 400, {
+              error: 'missing_reason',
+              message: 'rejected_reason é obrigatório ao recusar um pedido.',
+            });
+          }
+          updates.rejected_at = new Date().toISOString();
+          updates.confirmed_at = null;
+          updates.rejected_reason = reason;
+        } else if (body.status === 'new') {
+          updates.confirmed_at = null;
+          updates.rejected_at = null;
+          updates.rejected_reason = null;
+        }
+      }
+
+      // Manager notes (optional, can be sent alone)
+      if (body.manager_notes !== undefined) {
+        updates.manager_notes = body.manager_notes;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return json(res, 400, { error: 'no_changes', message: 'Nenhum campo enviado para atualizar.' });
+      }
+
+      updates.updated_at = new Date().toISOString();
+
+      const { error: updateErr } = await supabase
+        .from('orders')
+        .update(updates)
+        .eq('order_code', orderCode);
+
+      if (updateErr) {
+        console.error('[admin/orders/patch] update error:', updateErr);
+        return json(res, 500, { error: 'db_error', message: 'Falha ao atualizar pedido.' });
+      }
+
+      // Fall through to fetch and return updated order
+    }
+
+    /* ── GET / return updated order ─────────────── */
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .select('*')
