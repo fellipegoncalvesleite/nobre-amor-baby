@@ -106,6 +106,18 @@ export default function AdminOrdersPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
+          {/* Env var warning */}
+          {!ADMIN_KEY && (
+            <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+              <div className="flex items-center gap-2">
+                <FiAlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0" size={18} />
+                <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
+                  <strong>VITE_ADMIN_API_KEY</strong> não está configurada. Vá no painel do Vercel → Settings → Environment Variables e adicione <strong>ADMIN_API_KEY</strong> (para o servidor) e <strong>VITE_ADMIN_API_KEY</strong> (para o frontend) com o mesmo valor.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
             <div className="flex items-center gap-3">
