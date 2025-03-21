@@ -120,6 +120,26 @@ export default function AdminPage() {
             </Link>
           </div>
 
+          {/* Admin shortcuts */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+            <Link to="/admin/produtos" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
+              <p className="font-sans text-2xl font-bold text-baby-accent">🛍️</p>
+              <p className="font-sans text-xs text-baby-text/50">Produtos (DB)</p>
+            </Link>
+            <Link to="/admin/colecoes-gerenciar" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
+              <p className="font-sans text-2xl font-bold text-baby-accent">📁</p>
+              <p className="font-sans text-xs text-baby-text/50">Coleções</p>
+            </Link>
+            <Link to="/admin/inicio" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
+              <p className="font-sans text-2xl font-bold text-baby-accent">🏠</p>
+              <p className="font-sans text-xs text-baby-text/50">Página Inicial</p>
+            </Link>
+            <Link to="/debug" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
+              <p className="font-sans text-2xl font-bold text-baby-accent">🐛</p>
+              <p className="font-sans text-xs text-baby-text/50">Debug</p>
+            </Link>
+          </div>
+
           {/* Search */}
           <div className="relative mb-6">
             <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-baby-text/40" size={18} />

@@ -295,6 +295,36 @@ export default function Header() {
                             <FiSettings size={16} aria-hidden="true" />
                             Painel (Admin)
                           </Link>
+                          <Link
+                            to="/admin/produtos"
+                            role="menuitem"
+                            onClick={() => setIsAccountOpen(false)}
+                            className={`flex items-center gap-3 px-4 py-2.5 font-sans text-xs text-baby-text/55
+                                       hover:bg-baby-pink/30 hover:text-baby-text transition-colors pl-10
+                                       ${focusRing}`}
+                          >
+                            Produtos
+                          </Link>
+                          <Link
+                            to="/admin/colecoes-gerenciar"
+                            role="menuitem"
+                            onClick={() => setIsAccountOpen(false)}
+                            className={`flex items-center gap-3 px-4 py-2.5 font-sans text-xs text-baby-text/55
+                                       hover:bg-baby-pink/30 hover:text-baby-text transition-colors pl-10
+                                       ${focusRing}`}
+                          >
+                            Coleções
+                          </Link>
+                          <Link
+                            to="/admin/inicio"
+                            role="menuitem"
+                            onClick={() => setIsAccountOpen(false)}
+                            className={`flex items-center gap-3 px-4 py-2.5 font-sans text-xs text-baby-text/55
+                                       hover:bg-baby-pink/30 hover:text-baby-text transition-colors pl-10
+                                       ${focusRing}`}
+                          >
+                            Página Inicial
+                          </Link>
                           {authUser?.role === 'debug' && (
                             <Link
                               to="/debug"
