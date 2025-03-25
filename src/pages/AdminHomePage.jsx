@@ -23,7 +23,7 @@ import {
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
-export default function AdminHomePage() {
+export default function AdminHomePage({ embedded = false }) {
   const [settings, setSettings] = useState(null);
   const [allCollections, setAllCollections] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
@@ -109,22 +109,22 @@ export default function AdminHomePage() {
 
   if (loading) {
     return (
-      <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center py-12">
+      <div className={embedded ? 'text-center py-12' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen'}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6 text-center py-12'}>
           <FiRefreshCw size={24} className="mx-auto animate-spin text-baby-accent mb-2" />
           <p className="font-sans text-sm text-baby-text/50">Carregando…</p>
         </div>
-      </section>
+      </div>
     );
   }
 
   if (!settings) {
     return (
-      <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center py-12">
+      <div className={embedded ? 'text-center py-12' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen'}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6 text-center py-12'}>
           <p className="font-sans text-sm text-baby-text/50">Configurações não encontradas. Execute a migration_003 no Supabase.</p>
         </div>
-      </section>
+      </div>
     );
   }
 
@@ -134,10 +134,14 @@ export default function AdminHomePage() {
   const availableCollections = allCollections.filter((c) => !collOrder.includes(c.id));
   const availableProducts = allProducts.filter((p) => !featOrder.includes(p.id));
 
+  const Wrapper = embedded ? 'div' : 'section';
+  const wrapperClass = embedded ? '' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen';
+
   return (
-    <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6">
+    <Wrapper className={wrapperClass}>
+      <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6'}>
         {/* Breadcrumb */}
+        {!embedded && (
         <nav className="mb-6 font-sans text-sm text-baby-text/60">
           <ol className="flex items-center gap-1.5">
             <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
@@ -147,6 +151,7 @@ export default function AdminHomePage() {
             <li className="text-baby-text font-medium">Página Inicial</li>
           </ol>
         </nav>
+        )}
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <div className="flex items-center gap-3 mb-8">
@@ -304,10 +309,12 @@ export default function AdminHomePage() {
 
           {/* Save / Back */}
           <div className="flex flex-wrap gap-3 justify-center">
+            {!embedded && (
             <Link to="/admin" className={btnSecondary}>
               <FiArrowLeft size={14} className="inline -mt-0.5 mr-1" />
               Voltar ao painel
             </Link>
+            )}
             <button type="button" onClick={handleSave} disabled={saving}
               className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full font-sans text-sm font-medium
                          transition-colors disabled:opacity-40 ${btnPrimary}`}>
@@ -323,6 +330,6 @@ export default function AdminHomePage() {
           </div>
         </motion.div>
       </div>
-    </section>
+    </Wrapper>
   );
 }

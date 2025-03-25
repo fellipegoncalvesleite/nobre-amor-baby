@@ -28,7 +28,7 @@ const emptyForm = {
   images: [],
 };
 
-export default function AdminCollectionsPage() {
+export default function AdminCollectionsPage({ embedded = false }) {
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -140,10 +140,14 @@ export default function AdminCollectionsPage() {
     }
   };
 
+  const Wrapper = embedded ? 'div' : 'section';
+  const wrapperClass = embedded ? '' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen';
+
   return (
-    <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6">
+    <Wrapper className={wrapperClass}>
+      <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6'}>
         {/* Breadcrumb */}
+        {!embedded && (
         <nav className="mb-6 font-sans text-sm text-baby-text/60">
           <ol className="flex items-center gap-1.5">
             <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
@@ -153,6 +157,7 @@ export default function AdminCollectionsPage() {
             <li className="text-baby-text font-medium">Coleções</li>
           </ol>
         </nav>
+        )}
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           {/* Header */}
@@ -338,6 +343,6 @@ export default function AdminCollectionsPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </section>
+    </Wrapper>
   );
 }
