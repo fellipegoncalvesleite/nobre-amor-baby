@@ -23,6 +23,7 @@ import {
   listCollections, uploadImage,
 } from '../lib/adminApi';
 import ImageUploader from '../components/admin/ImageUploader';
+import { SIZE_PRESETS } from '../utils/sizes';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -74,6 +75,7 @@ export default function AdminProductsPage({ embedded = false }) {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
+  const [customSize, setCustomSize] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -138,6 +140,44 @@ export default function AdminProductsPage({ embedded = false }) {
     setForm((prev) => ({ ...prev, images: newImages }));
   };
 
+  /* ── Size chip helpers ──────────────────────────── */
+  const selectedSizes = form.sizeOptions
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const toggleSize = (size) => {
+    const updated = selectedSizes.includes(size)
+      ? selectedSizes.filter((s) => s !== size)
+      : [...selectedSizes, size];
+    setForm((prev) => ({ ...prev, sizeOptions: updated.join(', ') }));
+  };
+
+  const addCustomSize = () => {
+    const val = customSize.trim();
+    if (!val || selectedSizes.includes(val)) return;
+    setForm((prev) => ({
+      ...prev,
+      sizeOptions: [...selectedSizes, val].join(', '),
+    }));
+    setCustomSize('');
+  };
+
+  const removeSize = (size) => {
+    setForm((prev) => ({
+      ...prev,
+      sizeOptions: selectedSizes.filter((s) => s !== size).join(', '),
+    }));
+  };
+
+  /* ── Old price validation ───────────────────────── */
+  const priceCents = Math.round(parseFloat(form.price) * 100) || 0;
+  const oldPriceCents = form.oldPrice ? Math.round(parseFloat(form.oldPrice) * 100) : 0;
+  const oldPriceError =
+    form.oldPrice && oldPriceCents > 0 && priceCents > 0 && oldPriceCents <= priceCents
+      ? 'O preço riscado deve ser maior que o preço atual.'
+      : '';
+
   const handleUpload = async (file) => {
     const url = await uploadImage(file, 'product');
     return url;
@@ -150,6 +190,10 @@ export default function AdminProductsPage({ embedded = false }) {
     }
     if (!form.price || parseFloat(form.price) <= 0) {
       toast.error('Preço inválido.', { style: toastStyle });
+      return;
+    }
+    if (oldPriceError) {
+      toast.error(oldPriceError, { style: toastStyle });
       return;
     }
 
@@ -453,11 +497,17 @@ export default function AdminProductsPage({ embedded = false }) {
                                  font-sans text-sm text-baby-text ${focusRing}`} />
                   </div>
                   <div>
-                    <label className="font-sans text-sm font-medium text-baby-text block mb-1">Preço anterior</label>
+                    <label className="font-sans text-sm font-medium text-baby-text block mb-1">Preço riscado (promoção)</label>
                     <input name="oldPrice" type="number" step="0.01" min="0" value={form.oldPrice} onChange={handleChange}
                       placeholder="Opcional"
-                      className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-3 py-2.5
+                      className={`w-full rounded-xl border ${oldPriceError ? 'border-red-400' : 'border-baby-text/15'} bg-baby-cream px-3 py-2.5
                                  font-sans text-sm text-baby-text placeholder-baby-text/40 ${focusRing}`} />
+                    <p className="font-sans text-xs text-baby-text/50 mt-1">
+                      Se preenchido, será exibido riscado e o preço atual aparecerá como promocional.
+                    </p>
+                    {oldPriceError && (
+                      <p className="font-sans text-xs text-red-500 mt-0.5">{oldPriceError}</p>
+                    )}
                   </div>
                 </div>
 
@@ -480,13 +530,72 @@ export default function AdminProductsPage({ embedded = false }) {
                   </div>
                 </div>
 
-                {/* Size options */}
+                {/* Size options — chip selector */}
                 <div>
-                  <label className="font-sans text-sm font-medium text-baby-text block mb-1">Opções de tamanho (separadas por vírgula)</label>
-                  <input name="sizeOptions" value={form.sizeOptions} onChange={handleChange}
-                    placeholder="0-1m, 1-3m, 3-6m"
-                    className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-3 py-2.5
-                               font-sans text-sm text-baby-text placeholder-baby-text/40 ${focusRing}`} />
+                  <label className="font-sans text-sm font-medium text-baby-text block mb-1">Opções de tamanho</label>
+
+                  {/* Preset chips */}
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {(SIZE_PRESETS[form.sizeGroup] || []).map((size) => {
+                      const active = selectedSizes.includes(size);
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => toggleSize(size)}
+                          className={`px-2.5 py-1 rounded-full text-xs font-sans border transition-colors
+                            ${active
+                              ? 'bg-baby-accent text-white border-baby-accent'
+                              : 'border-baby-text/15 text-baby-text/70 hover:border-baby-accent hover:text-baby-accent dark:text-baby-text/60'}`}
+                        >
+                          {size}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom sizes (non-preset) shown as removable tags */}
+                  {selectedSizes.filter((s) => !(SIZE_PRESETS[form.sizeGroup] || []).includes(s)).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {selectedSizes
+                        .filter((s) => !(SIZE_PRESETS[form.sizeGroup] || []).includes(s))
+                        .map((size) => (
+                          <span
+                            key={size}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans
+                                       bg-baby-accent/15 text-baby-accent border border-baby-accent/30"
+                          >
+                            {size}
+                            <button type="button" onClick={() => removeSize(size)} className="hover:text-red-500">
+                              <FiX size={12} />
+                            </button>
+                          </span>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* Custom size input — hide for acessório when Único is selected */}
+                  {!(form.sizeGroup === 'acessório' && selectedSizes.includes('Único') && selectedSizes.length === 1) && (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        value={customSize}
+                        onChange={(e) => setCustomSize(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomSize(); } }}
+                        placeholder="Tamanho personalizado"
+                        className={`flex-1 rounded-xl border border-baby-text/15 bg-baby-cream px-3 py-2
+                                   font-sans text-xs text-baby-text placeholder-baby-text/40 ${focusRing}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={addCustomSize}
+                        disabled={!customSize.trim()}
+                        className={`px-3 py-2 rounded-xl text-xs font-sans font-medium transition-colors
+                                   disabled:opacity-30 ${btnSecondary}`}
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Stock / Weight */}
@@ -554,7 +663,7 @@ export default function AdminProductsPage({ embedded = false }) {
                              transition-colors ${focusRing}`}>
                   Cancelar
                 </button>
-                <button type="button" onClick={handleSave} disabled={saving}
+                <button type="button" onClick={handleSave} disabled={saving || !!oldPriceError}
                   className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full font-sans text-sm font-medium
                              transition-colors disabled:opacity-40 ${btnPrimary}`}>
                   {saving ? 'Salvando…' : editingId ? 'Salvar alterações' : 'Criar produto'}
