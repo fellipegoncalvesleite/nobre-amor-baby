@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiArrowRight } from 'react-icons/fi';
@@ -11,8 +12,12 @@ const containerVariants = {
 
 export default function Products() {
   const { products } = useCatalog();
-  /* Show up to 8 featured products on the home page */
-  const featured = products.slice(0, 8);
+  /* Show up to 8 featured or public products on the home page */
+  const featured = useMemo(() => {
+    const pub = products.filter((p) => p.is_public !== false);
+    const starred = pub.filter((p) => p.featured);
+    return (starred.length >= 4 ? starred : pub).slice(0, 8);
+  }, [products]);
 
   return (
     <section id="produtos" className="py-20 lg:py-28 bg-baby-cream" aria-label="Produtos em destaque">

@@ -59,6 +59,10 @@ export function formatAgeRangeWithYears(minMonths, maxMonths) {
  */
 export function formatSizeGroupLabel(group) {
   const map = {
+    'roupa': 'Roupas',
+    'calçado': 'Calçados',
+    'acessório': 'Acessórios',
+    /* legacy age-based keys (backwards compat) */
     '0-6m': '0\u20136 m',
     '6-12m': '6\u201312 m',
     '12-24m': '12\u201324 m',

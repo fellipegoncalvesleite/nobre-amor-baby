@@ -25,15 +25,14 @@ function collectExactRanges(productList, groupValue) {
       }
     }
   }
-  return [...rangeSet.values()].sort((a, b) => a.minMonths - b.minMonths);
+  return [...rangeSet.values()].sort((a, b) => (a.minMonths ?? 999) - (b.minMonths ?? 999));
 }
 
 /** Group label shown as each section header */
 const GROUP_LABELS = {
-  '0-6m': '0\u20136 meses',
-  '6-12m': '6\u201312 meses',
-  '12-24m': '12\u201324 meses',
-  '24m-4a': '24 meses\u20134 anos',
+  'roupa': 'Roupas',
+  'cal\u00e7ado': 'Cal\u00e7ados',
+  'acess\u00f3rio': 'Acess\u00f3rios',
 };
 
 export default function AllProductsPage() {
@@ -135,7 +134,7 @@ export default function AllProductsPage() {
         <div className="mb-10 space-y-4">
           {/* Size-group chips */}
           <fieldset className="flex flex-wrap items-center gap-2" aria-label="Filtrar por faixa etária">
-            <span className="font-sans text-sm text-baby-text/60 mr-1">Faixa etária:</span>
+            <span className="font-sans text-sm text-baby-text/60 mr-1">Categoria:</span>
             {availableGroups.map((g) => {
               const isActive = activeSizeGroup === g.value;
               return (

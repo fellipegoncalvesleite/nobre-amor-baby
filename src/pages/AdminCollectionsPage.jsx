@@ -3,7 +3,7 @@
  *
  * Route: /admin/colecoes-gerenciar  (ProtectedRoute role="manager")
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -12,12 +12,9 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing, btnPrimary, btnSecondary } from '../lib/ui';
-import {
-  listCollections, createCollection, updateCollection, deleteCollection,
-  uploadImage,
-} from '../lib/adminApi';
+import { uploadImage } from '../lib/adminApi';
+import { useCatalog } from '../context/CatalogContext';
 import ImageUploader from '../components/admin/ImageUploader';
-import { getSeededCollections } from '../adminSeeds/seedCollections';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -30,40 +27,21 @@ const emptyForm = {
 };
 
 export default function AdminCollectionsPage({ embedded = false }) {
-  const [collections, setCollections] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [seededMode, setSeededMode] = useState(false);
+  const {
+    collections,
+    isLoading: loading,
+    mode,
+    upsertCollection: ctxUpsertCollection,
+    removeCollection: ctxRemoveCollection,
+    refresh: fetchData,
+  } = useCatalog();
+
+  const seededMode = mode === 'seed';
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
-
-  const localCollectionsRef = useRef(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const colls = await listCollections();
-      if (colls.length === 0) {
-        if (!localCollectionsRef.current) localCollectionsRef.current = getSeededCollections();
-        setCollections(localCollectionsRef.current);
-        setSeededMode(true);
-      } else {
-        setCollections(colls);
-        setSeededMode(false);
-        localCollectionsRef.current = null;
-      }
-    } catch {
-      if (!localCollectionsRef.current) localCollectionsRef.current = getSeededCollections();
-      setCollections(localCollectionsRef.current);
-      setSeededMode(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
 
   /* Modal helpers */
   const openCreate = () => {
@@ -115,44 +93,16 @@ export default function AdminCollectionsPage({ embedded = false }) {
     }
 
     setSaving(true);
-
-    if (seededMode) {
-      const payload = buildPayload();
-      const now = new Date().toISOString();
-
-      if (editingId) {
-        const updated = collections.map((c) =>
-          c.id === editingId ? { ...c, ...payload, updated_at: now } : c,
-        );
-        localCollectionsRef.current = updated;
-        setCollections(updated);
-        toast.success('Coleção atualizada (local)!', { style: toastStyle });
-      } else {
-        const newColl = { id: `local-${Date.now()}`, ...payload, created_at: now, updated_at: now };
-        const updated = [newColl, ...collections];
-        localCollectionsRef.current = updated;
-        setCollections(updated);
-        toast.success('Coleção criada (local)!', { style: toastStyle });
-      }
-
-      setModalOpen(false);
-      setSaving(false);
-      return;
-    }
-
     try {
       const payload = buildPayload();
-
       if (editingId) {
-        await updateCollection(editingId, payload);
+        await ctxUpsertCollection({ id: editingId, ...payload });
         toast.success('Coleção atualizada!', { style: toastStyle });
       } else {
-        await createCollection(payload);
+        await ctxUpsertCollection(payload);
         toast.success('Coleção criada!', { style: toastStyle });
       }
-
       setModalOpen(false);
-      fetchData();
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -162,42 +112,21 @@ export default function AdminCollectionsPage({ embedded = false }) {
 
   const handleDelete = async (coll) => {
     if (!confirm(`Excluir coleção "${coll.name}"? Produtos associados ficarão sem coleção.`)) return;
-
-    if (seededMode) {
-      const updated = collections.filter((c) => c.id !== coll.id);
-      localCollectionsRef.current = updated;
-      setCollections(updated);
-      toast.success('Coleção excluída (local).', { style: toastStyle });
-      return;
-    }
-
     try {
-      await deleteCollection(coll.id);
+      await ctxRemoveCollection(coll.id);
       toast.success('Coleção excluída.', { style: toastStyle });
-      fetchData();
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     }
   };
 
   const handleToggleActive = async (coll) => {
-    if (seededMode) {
-      const updated = collections.map((c) =>
-        c.id === coll.id ? { ...c, is_active: !c.is_active } : c,
-      );
-      localCollectionsRef.current = updated;
-      setCollections(updated);
+    try {
+      await ctxUpsertCollection({ ...coll, is_active: !coll.is_active });
       toast.success(
-        coll.is_active ? 'Coleção desativada (local).' : 'Coleção ativada (local)!',
+        coll.is_active ? 'Coleção desativada.' : 'Coleção ativada!',
         { style: toastStyle },
       );
-      return;
-    }
-
-    try {
-      await updateCollection(coll.id, { is_active: !coll.is_active });
-      toast.success(coll.is_active ? 'Coleção desativada.' : 'Coleção ativada!', { style: toastStyle });
-      fetchData();
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     }

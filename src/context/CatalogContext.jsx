@@ -1,149 +1,119 @@
 /**
- * CatalogContext — live product catalog with localStorage override.
+ * CatalogContext — unified single source of truth for products + collections.
  *
- * Initialises from localStorage (`nobre_amor_v1_products_override`).
- * Falls back to the static default catalogue from `data/products.js`.
+ * Loading strategy:
+ *   1. Try admin API (all products + all collections)
+ *   2. On failure or empty → fallback to seed data
  *
  * Provides:
- *   products          — fully merged array (default + overrides)
- *   getProductById    — lookup helper
- *   getProductBySlug  — lookup helper
- *   updateProduct     — partial update by id  (manager/debug)
- *   resetCatalog      — drop all overrides     (manager/debug)
- *   setStock          — set stockCount for a product
- *   decrementStock    — decrease stockCount (clamps at 0)
- *   incrementStock    — increase stockCount
+ *   products, collections  — arrays (normalized with camelCase compat)
+ *   mode                   — "db" | "seed"
+ *   isLoading, error
+ *   getProductById, getProductBySlug, getCollectionBySlug
+ *   upsertProduct, removeProduct
+ *   upsertCollection, removeCollection
+ *   setStock, decrementStock, incrementStock
+ *   refresh, resetCatalog
  */
 
-import { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
-import { defaultProducts } from '../data/products';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  listProducts as apiListProducts,
+  listCollections as apiListCollections,
+  createProduct as apiCreateProduct,
+  updateProduct as apiUpdateProduct,
+  deleteProduct as apiDeleteProduct,
+  createCollection as apiCreateCollection,
+  updateCollection as apiUpdateCollection,
+  deleteCollection as apiDeleteCollection,
+} from '../lib/adminApi';
+import { getSeededProducts } from '../adminSeeds/seedProducts';
+import { getSeededCollections } from '../adminSeeds/seedCollections';
 
-/* ── localStorage helpers ─────────────────────────────── */
-
-const STORAGE_VERSION = 'v1';
-const storageKey = `nobre_amor_${STORAGE_VERSION}_products_override`;
-
-function loadOverrides() {
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-function saveOverrides(overrides) {
-  try {
-    if (Object.keys(overrides).length === 0) {
-      localStorage.removeItem(storageKey);
-    } else {
-      localStorage.setItem(storageKey, JSON.stringify(overrides));
-    }
-  } catch {
-    /* quota exceeded — silently ignore */
-  }
-}
-
-/* ── Stock normalisation ──────────────────────────────── */
+/* ── Product normalisation ────────────────────────────── */
 
 /**
- * Ensure a product has a valid numeric `stockCount` and derive `inStock`.
- * Migration: if only boolean `inStock` exists, convert → stockCount.
+ * Normalise a product from any source (DB row, seed, or legacy format)
+ * so both admin (snake_case) and public pages (camelCase) can read it.
  */
-function normalizeStock(product) {
-  let count = product.stockCount;
-  if (typeof count !== 'number' || !Number.isFinite(count)) {
-    // Migration from boolean-only override
-    count = product.inStock === false ? 0 : 99;
-  }
-  count = Math.max(0, Math.round(count));
-  return { ...product, stockCount: count, inStock: count > 0 };
-}
+function normalizeProduct(p, collections) {
+  if (p._normalized) return p;
 
-/* ── Merge logic ──────────────────────────────────────── */
+  const priceCents = p.price_cents ?? Math.round((p.price || 0) * 100);
+  const oldPriceCents = p.old_price_cents ?? (p.oldPrice ? Math.round(p.oldPrice * 100) : null);
+  const price = priceCents / 100;
+  const oldPrice = oldPriceCents && oldPriceCents > priceCents ? oldPriceCents / 100 : null;
 
-/**
- * Merge the default static catalogue with per-product overrides.
- * Whitelisted override fields: stockCount (integer).
- * `inStock` is always derived from `stockCount > 0`.
- */
-function mergeProducts(overrides) {
-  return defaultProducts.map((p) => {
-    const ov = overrides[p.id];
-    if (!ov) return normalizeStock(p);
-    const merged = { ...p };
-    if (typeof ov.stockCount === 'number') merged.stockCount = ov.stockCount;
-    // Legacy migration: boolean-only override
-    else if (typeof ov.inStock === 'boolean' && ov.inStock === false) merged.stockCount = 0;
-    return normalizeStock(merged);
+  const rawImg = p.image_urls || (Array.isArray(p.images) ? p.images : []);
+  const images = rawImg.map((i) => (typeof i === 'string' ? i : i?.src || ''));
+
+  const rawSizeOpts = p.size_options || p.sizeOptions || [];
+  const sizeOptions = rawSizeOpts.map((opt) => {
+    if (typeof opt === 'string') return { label: opt };
+    return opt;
   });
+  const sizes = sizeOptions.map((o) => o.label);
+
+  const stockCount = p.stock_count ?? p.stockCount ?? 99;
+  const inStock = p.in_stock ?? p.inStock ?? stockCount > 0;
+
+  const coll = collections?.find((c) => c.id === p.collection_id) ?? null;
+
+  return {
+    ...p,
+    /* canonical (snake_case) */
+    price_cents: priceCents,
+    old_price_cents: oldPriceCents,
+    image_urls: images,
+    in_stock: inStock,
+    stock_count: stockCount,
+    size_group: p.size_group || p.sizeGroup || 'roupa',
+    size_options: sizes,
+    weight_grams: p.weight_grams || p.weightGrams || 200,
+    is_public: p.is_public ?? p.isPublic ?? true,
+    featured: p.featured ?? false,
+    age_min_months: p.age_min_months ?? p.ageMinMonths ?? null,
+    age_max_months: p.age_max_months ?? p.ageMaxMonths ?? null,
+    collection_id: p.collection_id || null,
+    /* computed (camelCase) — public page compat */
+    price,
+    oldPrice,
+    images,
+    inStock,
+    stockCount: stockCount,
+    sizeGroup: p.size_group || p.sizeGroup || 'roupa',
+    sizeOptions,
+    sizes,
+    category: coll?.slug || p.category_slug || p.category || '',
+    isNew: /novo/i.test(p.tag || ''),
+    isPromo: oldPrice != null && oldPrice > 0,
+    weightGrams: p.weight_grams || p.weightGrams || 200,
+    packGroup: p.pack_group || p.packGroup || 'roupa',
+    description: p.description || '',
+    details: p.details || [],
+    tag: p.tag || null,
+    slug: p.slug || '',
+    name: p.name || '',
+    ageMinMonths: p.age_min_months ?? p.ageMinMonths ?? null,
+    ageMaxMonths: p.age_max_months ?? p.ageMaxMonths ?? null,
+    _normalized: true,
+  };
 }
 
-/* ── Reducer ──────────────────────────────────────────── */
+/* ── Collection normalisation ─────────────────────────── */
 
-function reducer(state, action) {
-  switch (action.type) {
-    case 'UPDATE_PRODUCT': {
-      const { id, changes } = action.payload;
-      const prev = state.overrides[id] ?? {};
-      const next = { ...prev };
-      // Whitelist: stockCount (integer)
-      if (typeof changes.stockCount === 'number') {
-        next.stockCount = Math.max(0, Math.round(changes.stockCount));
-        delete next.inStock; // derived
-      }
-      // Legacy compat: if only inStock boolean passed, convert
-      else if (typeof changes.inStock === 'boolean') {
-        next.stockCount = changes.inStock ? 99 : 0;
-        delete next.inStock;
-      }
-      const overrides = { ...state.overrides, [id]: next };
-      return { overrides, products: mergeProducts(overrides) };
-    }
-
-    case 'SET_STOCK': {
-      const { id, count } = action.payload;
-      const prev = state.overrides[id] ?? {};
-      const overrides = {
-        ...state.overrides,
-        [id]: { ...prev, stockCount: Math.max(0, Math.round(count)) },
-      };
-      return { overrides, products: mergeProducts(overrides) };
-    }
-
-    case 'DECREMENT_STOCK': {
-      const { id, amount = 1 } = action.payload;
-      const current = state.products.find((p) => p.id === String(id));
-      const curCount = current?.stockCount ?? 0;
-      const prev = state.overrides[id] ?? {};
-      const overrides = {
-        ...state.overrides,
-        [id]: { ...prev, stockCount: Math.max(0, curCount - amount) },
-      };
-      return { overrides, products: mergeProducts(overrides) };
-    }
-
-    case 'INCREMENT_STOCK': {
-      const { id, amount = 1 } = action.payload;
-      const current = state.products.find((p) => p.id === String(id));
-      const curCount = current?.stockCount ?? 0;
-      const prev = state.overrides[id] ?? {};
-      const overrides = {
-        ...state.overrides,
-        [id]: { ...prev, stockCount: curCount + amount },
-      };
-      return { overrides, products: mergeProducts(overrides) };
-    }
-
-    case 'RESET_CATALOG':
-      return { overrides: {}, products: mergeProducts({}) };
-
-    default:
-      return state;
-  }
+function normalizeCollection(c) {
+  return {
+    ...c,
+    name: c.name || '',
+    slug: c.slug || '',
+    description: c.description || '',
+    is_active: c.is_active !== false,
+    image_url: c.image_url || c.image || '',
+    /* compat for Categories/ColecoesPage */
+    label: c.label || c.name || '',
+    image: c.image || c.image_url || '',
+  };
 }
 
 /* ── Context ──────────────────────────────────────────── */
@@ -151,68 +121,221 @@ function reducer(state, action) {
 const CatalogContext = createContext(null);
 
 export function CatalogProvider({ children }) {
-  const initialOverrides = loadOverrides();
-  const [state, dispatch] = useReducer(reducer, {
-    overrides: initialOverrides,
-    products: mergeProducts(initialOverrides),
-  });
+  const [products, setProducts] = useState([]);
+  const [collections, setCollections] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [mode, setMode] = useState('seed');
 
-  // Persist overrides on every change
-  useEffect(() => {
-    saveOverrides(state.overrides);
-  }, [state.overrides]);
+  const modeRef = useRef('seed');
+  const collectionsRef = useRef([]);
 
-  /* ── Actions ─────────────────────────────────────── */
+  /* ── Seed fallback ─────────────────────────────── */
 
-  const updateProduct = useCallback(
-    (id, changes) => dispatch({ type: 'UPDATE_PRODUCT', payload: { id, changes } }),
-    [],
-  );
+  const loadSeeds = useCallback(() => {
+    const seedColls = getSeededCollections().map(normalizeCollection);
+    const seedProds = getSeededProducts().map((p) => normalizeProduct(p, seedColls));
+    setCollections(seedColls);
+    setProducts(seedProds);
+    setMode('seed');
+    modeRef.current = 'seed';
+    collectionsRef.current = seedColls;
+  }, []);
 
-  const setStock = useCallback(
-    (id, count) => dispatch({ type: 'SET_STOCK', payload: { id, count } }),
-    [],
-  );
+  /* ── Load catalog ──────────────────────────────── */
 
-  const decrementStock = useCallback(
-    (id, amount = 1) => dispatch({ type: 'DECREMENT_STOCK', payload: { id, amount } }),
-    [],
-  );
+  const loadCatalog = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [prods, colls] = await Promise.all([
+        apiListProducts({}),
+        apiListCollections(),
+      ]);
 
-  const incrementStock = useCallback(
-    (id, amount = 1) => dispatch({ type: 'INCREMENT_STOCK', payload: { id, amount } }),
-    [],
-  );
+      if ((prods && prods.length > 0) || (colls && colls.length > 0)) {
+        const normColls = (colls || []).map(normalizeCollection);
+        const normProds = (prods || []).map((p) => normalizeProduct(p, normColls));
+        setCollections(normColls);
+        setProducts(normProds);
+        setMode('db');
+        modeRef.current = 'db';
+        collectionsRef.current = normColls;
+      } else {
+        loadSeeds();
+      }
+    } catch {
+      loadSeeds();
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadSeeds]);
 
-  const resetCatalog = useCallback(
-    () => dispatch({ type: 'RESET_CATALOG' }),
-    [],
-  );
+  useEffect(() => { loadCatalog(); }, [loadCatalog]);
 
-  /* ── Lookup helpers ──────────────────────────────── */
+  /* ── Refresh (public) ──────────────────────────── */
+
+  const refresh = useCallback(() => loadCatalog(), [loadCatalog]);
+
+  const resetCatalog = useCallback(() => {
+    loadSeeds();
+  }, [loadSeeds]);
+
+  /* ── Lookup helpers ────────────────────────────── */
 
   const getProductById = useCallback(
-    (id) => state.products.find((p) => p.id === String(id)) ?? null,
-    [state.products],
+    (id) => products.find((p) => String(p.id) === String(id)) ?? null,
+    [products],
   );
 
   const getProductBySlug = useCallback(
-    (slug) => state.products.find((p) => p.slug === slug) ?? null,
-    [state.products],
+    (slug) => products.find((p) => p.slug === slug) ?? null,
+    [products],
   );
+
+  const getCollectionBySlug = useCallback(
+    (slug) => collections.find((c) => c.slug === slug) ?? null,
+    [collections],
+  );
+
+  /* ── Product mutations ─────────────────────────── */
+
+  const upsertProduct = useCallback(async (product) => {
+    if (modeRef.current === 'db') {
+      const isExisting = product.id && !String(product.id).startsWith('seed-') && !String(product.id).startsWith('local-');
+      if (isExisting) {
+        await apiUpdateProduct(product.id, product);
+      } else {
+        await apiCreateProduct(product);
+      }
+      await loadCatalog();
+    } else {
+      const colls = collectionsRef.current;
+      setProducts((prev) => {
+        const normalized = normalizeProduct(
+          { ...product, id: product.id || `local-${Date.now()}`, updated_at: new Date().toISOString() },
+          colls,
+        );
+        const idx = prev.findIndex((p) => p.id === product.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], ...normalized, _normalized: true };
+          return copy;
+        }
+        return [normalized, ...prev];
+      });
+    }
+  }, [loadCatalog]);
+
+  const removeProduct = useCallback(async (id) => {
+    if (modeRef.current === 'db') {
+      await apiDeleteProduct(id);
+      await loadCatalog();
+    } else {
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+    }
+  }, [loadCatalog]);
+
+  /* ── Collection mutations ──────────────────────── */
+
+  const upsertCollection = useCallback(async (collection) => {
+    if (modeRef.current === 'db') {
+      const isExisting = collection.id && !String(collection.id).startsWith('seed-') && !String(collection.id).startsWith('local-');
+      if (isExisting) {
+        await apiUpdateCollection(collection.id, collection);
+      } else {
+        await apiCreateCollection(collection);
+      }
+      await loadCatalog();
+    } else {
+      setCollections((prev) => {
+        const normalized = normalizeCollection(
+          { ...collection, id: collection.id || `local-${Date.now()}`, updated_at: new Date().toISOString() },
+        );
+        const idx = prev.findIndex((c) => c.id === collection.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], ...normalized };
+          return copy;
+        }
+        return [normalized, ...prev];
+      });
+    }
+  }, [loadCatalog]);
+
+  const removeCollection = useCallback(async (id) => {
+    if (modeRef.current === 'db') {
+      await apiDeleteCollection(id);
+      await loadCatalog();
+    } else {
+      setCollections((prev) => prev.filter((c) => c.id !== id));
+    }
+  }, [loadCatalog]);
+
+  /* ── Stock helpers (compat with Debug/Checkout) ── */
+
+  const setStock = useCallback((id, count) => {
+    const clamped = Math.max(0, Math.round(count));
+    setProducts((prev) =>
+      prev.map((p) =>
+        String(p.id) === String(id)
+          ? { ...p, stockCount: clamped, stock_count: clamped, inStock: clamped > 0, in_stock: clamped > 0 }
+          : p,
+      ),
+    );
+  }, []);
+
+  const decrementStock = useCallback((id, amount = 1) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (String(p.id) !== String(id)) return p;
+        const newCount = Math.max(0, (p.stockCount ?? 0) - amount);
+        return { ...p, stockCount: newCount, stock_count: newCount, inStock: newCount > 0, in_stock: newCount > 0 };
+      }),
+    );
+  }, []);
+
+  const incrementStock = useCallback((id, amount = 1) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (String(p.id) !== String(id)) return p;
+        const newCount = (p.stockCount ?? 0) + amount;
+        return { ...p, stockCount: newCount, stock_count: newCount, inStock: true, in_stock: true };
+      }),
+    );
+  }, []);
+
+  /* ── Memoised value ────────────────────────────── */
 
   const value = useMemo(
     () => ({
-      products: state.products,
+      products,
+      collections,
+      isLoading,
+      error,
+      mode,
       getProductById,
       getProductBySlug,
-      updateProduct,
-      resetCatalog,
+      getCollectionBySlug,
+      upsertProduct,
+      removeProduct,
+      upsertCollection,
+      removeCollection,
       setStock,
       decrementStock,
       incrementStock,
+      refresh,
+      resetCatalog,
+      /* legacy aliases */
+      updateProduct: (id, changes) => {
+        const existing = products.find((p) => String(p.id) === String(id));
+        if (!existing) return;
+        upsertProduct({ ...existing, ...changes });
+      },
     }),
-    [state.products, getProductById, getProductBySlug, updateProduct, resetCatalog, setStock, decrementStock, incrementStock],
+    [products, collections, isLoading, error, mode, getProductById, getProductBySlug, getCollectionBySlug,
+     upsertProduct, removeProduct, upsertCollection, removeCollection,
+     setStock, decrementStock, incrementStock, refresh, resetCatalog],
   );
 
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;

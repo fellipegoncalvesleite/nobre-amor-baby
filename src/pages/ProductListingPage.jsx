@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { SIZE_GROUPS } from '../data/products';
 import { useCatalog } from '../context/CatalogContext';
-import { getCategoryBySlug } from '../data/categories';
 import ProductCard from '../components/ProductCard';
 import { btnSecondary, focusRing } from '../lib/ui';
 import { formatSizeGroupLabel } from '../utils/sizeFormat';
@@ -34,13 +33,13 @@ function collectExactRanges(productList, groupValue) {
     }
   }
   // sort by minMonths
-  return [...rangeSet.values()].sort((a, b) => a.minMonths - b.minMonths);
+  return [...rangeSet.values()].sort((a, b) => (a.minMonths ?? 999) - (b.minMonths ?? 999));
 }
 
 export default function ProductListingPage({ filter }) {
-  const { products } = useCatalog();
+  const { products, getCollectionBySlug } = useCatalog();
   const { slug } = useParams();
-  const category = filter === 'category' ? getCategoryBySlug(slug) : null;
+  const category = filter === 'category' ? getCollectionBySlug(slug) : null;
 
   // Filter state
   const [activeSizeGroup, setActiveSizeGroup] = useState('');
@@ -54,11 +53,13 @@ export default function ProductListingPage({ filter }) {
       case 'promo':
         return products.filter((p) => p.isPromo);
       case 'category':
-        return products.filter((p) => p.category === slug);
+        return category
+          ? products.filter((p) => p.collection_id === category.id)
+          : products.filter((p) => p.category === slug);
       default:
         return products;
     }
-  }, [filter, slug, products]);
+  }, [filter, slug, products, category]);
 
   /* Only show size-group chips that have at least one product in the base set */
   const availableGroups = useMemo(
@@ -159,7 +160,7 @@ export default function ProductListingPage({ filter }) {
         <div className="mb-10 space-y-4">
           {/* Size-group chips */}
           <fieldset className="flex flex-wrap items-center gap-2" aria-label="Filtrar por faixa etária">
-            <span className="font-sans text-sm text-baby-text/60 mr-1">Faixa etária:</span>
+            <span className="font-sans text-sm text-baby-text/60 mr-1">Categoria:</span>
             {availableGroups.map((g) => {
               const isActive = activeSizeGroup === g.value;
               return (

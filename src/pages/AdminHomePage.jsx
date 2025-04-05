@@ -16,10 +16,8 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing, btnPrimary, btnSecondary } from '../lib/ui';
-import {
-  getHomeSettings, updateHomeSettings,
-  listCollections, listProducts,
-} from '../lib/adminApi';
+import { getHomeSettings, updateHomeSettings } from '../lib/adminApi';
+import { useCatalog } from '../context/CatalogContext';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -41,9 +39,8 @@ VALUES ('home')
 ON CONFLICT (key) DO NOTHING;`;
 
 export default function AdminHomePage({ embedded = false }) {
+  const { collections: allCollections, products: allProducts } = useCatalog();
   const [settings, setSettings] = useState(null);
-  const [allCollections, setAllCollections] = useState([]);
-  const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [migrationNeeded, setMigrationNeeded] = useState(false);
@@ -54,14 +51,8 @@ export default function AdminHomePage({ embedded = false }) {
     setFetchError('');
     setMigrationNeeded(false);
     try {
-      const [homeSettings, colls, prods] = await Promise.all([
-        getHomeSettings(),
-        listCollections(),
-        listProducts({ status: 'public' }),
-      ]);
+      const homeSettings = await getHomeSettings();
       setSettings(homeSettings);
-      setAllCollections(colls);
-      setAllProducts(prods);
     } catch (err) {
       if (err.code === 'missing_table') {
         setMigrationNeeded(true);
