@@ -16,13 +16,38 @@ export function generateOrderId() {
 
 /** Persist and retrieve the last order id. */
 const ORDER_KEY = 'nobre_amor_v1_last_order_id';
+const MY_ORDERS_KEY = 'nobre_amor_v1_my_orders';
 
 export function saveOrderId(id) {
   try { localStorage.setItem(ORDER_KEY, id); } catch { /* ignore */ }
+  // Also add to multi-order list
+  addOrderCode(id);
 }
 
 export function getLastOrderId() {
   try { return localStorage.getItem(ORDER_KEY) || ''; } catch { return ''; }
+}
+
+/** Multi-order tracking: add code to localStorage array */
+export function addOrderCode(code) {
+  try {
+    const list = getMyOrderCodes();
+    if (!list.includes(code)) {
+      list.unshift(code); // newest first
+      // Keep max 50
+      localStorage.setItem(MY_ORDERS_KEY, JSON.stringify(list.slice(0, 50)));
+    }
+  } catch { /* ignore */ }
+}
+
+/** Get all saved order codes (newest first) */
+export function getMyOrderCodes() {
+  try {
+    const raw = localStorage.getItem(MY_ORDERS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 
 /**

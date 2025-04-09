@@ -1,16 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiSend, FiChevronLeft, FiCheck, FiAlertTriangle, FiCreditCard } from 'react-icons/fi';
+import { FiSend, FiChevronLeft, FiCheck, FiAlertTriangle, FiCreditCard, FiLoader } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useCatalog } from '../context/CatalogContext';
 import { useStore } from '../context/StoreContext';
 import { formatPrice, btnPrimary, btnSecondary } from '../lib/ui';
-import { buildManagerPaidMessage, generateOrderId, saveOrderId } from '../utils/orderMessage';
-import { openWhatsApp, isWaTestMode } from '../utils/whatsapp';
+import { saveOrderId } from '../utils/orderMessage';
 import ShippingSelector from '../components/ShippingSelector';
 
 export default function CheckoutPage() {
+  const navigate = useNavigate();
   const { products, decrementStock } = useCatalog();
   const {
     cart, clearCart,
@@ -70,8 +70,7 @@ export default function CheckoutPage() {
   const canSubmit = shippingValid && paymentValid;
 
   const [form, setForm] = useState({ name: '', phone: '', email: '', message: '' });
-  const [submitted, setSubmitted] = useState(false);
-  const [lastOrderId, setLastOrderId] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e) =>
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -102,7 +101,7 @@ export default function CheckoutPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!canSubmit) {
+    if (!canSubmit || submitting) {
       toast.error('Preencha todos os dados obrigatórios e marque a confirmação.', {
         style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
       });
@@ -122,6 +121,8 @@ export default function CheckoutPage() {
       return;
     }
 
+    setSubmitting(true);
+
     // Decrement stock
     for (const item of items) {
       decrementStock(item.id, item.qty);
@@ -137,7 +138,7 @@ export default function CheckoutPage() {
     };
     setPayment(finalPayment);
 
-    /* ── Persist order to Supabase ────────────────── */
+    /* ── POST order to API ────────────────────── */
     let orderId;
     try {
       const orderPayload = {
@@ -186,65 +187,30 @@ export default function CheckoutPage() {
         orderId = apiData.orderCode;
       } else {
         console.warn('[checkout] API /api/orders error:', apiData);
-        orderId = generateOrderId(); // fallback
+        toast.error('Erro ao registrar pedido. Tente novamente.', {
+          style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+        });
+        setSubmitting(false);
+        return;
       }
     } catch (err) {
-      console.warn('[checkout] API /api/orders failed:', err);
-      orderId = generateOrderId(); // fallback — keep WA flow
+      console.error('[checkout] API /api/orders failed:', err);
+      toast.error('Falha na conexão. Verifique sua internet e tente novamente.', {
+        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+      });
+      setSubmitting(false);
+      return;
     }
     saveOrderId(orderId);
-    setLastOrderId(orderId);
-
-    // Build message
-    const message = buildManagerPaidMessage({
-      cart,
-      products,
-      user: { displayName: form.name },
-      shipping,
-      payment: finalPayment,
-      address,
-      customer: form,
-      orderId,
-    });
-
-    // Open WhatsApp
-    openWhatsApp(message);
 
     clearCart();
     clearShipping();
     clearAddress();
     resetPayment();
-    setSubmitted(true);
-  };
 
-  if (submitted) {
-    return (
-      <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-        <div className="max-w-lg mx-auto px-4 text-center">
-          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200 }}>
-            <div className="w-20 h-20 mx-auto mb-6 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-              <FiCheck size={36} className="text-green-600" />
-            </div>
-          </motion.div>
-          <h1 className="font-serif text-3xl sm:text-4xl text-baby-text mb-4">
-            Pedido Enviado!
-          </h1>
-          {lastOrderId && (
-            <p className="font-mono text-sm text-baby-text/50 mb-2">Pedido {lastOrderId}</p>
-          )}
-          <p className="font-sans text-baby-text/60 text-lg mb-8 leading-relaxed">
-            Seu pedido foi enviado via WhatsApp. A loja confirmará o envio em breve.
-          </p>
-          {isWaTestMode() && (
-            <p className="font-sans text-xs text-amber-500 mb-4">(Modo teste WhatsApp ativo)</p>
-          )}
-          <Link to="/" className={btnPrimary}>
-            Voltar à Loja
-          </Link>
-        </div>
-      </section>
-    );
-  }
+    // Navigate to success page with order code
+    navigate('/pedido-enviado', { state: { orderCode: orderId } });
+  };
 
   if (items.length === 0) {
     return (
@@ -584,11 +550,20 @@ export default function CheckoutPage() {
 
                 <button
                   type="submit"
-                  disabled={!canSubmit}
-                  className={`${btnPrimary} w-full ${!canSubmit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  disabled={!canSubmit || submitting}
+                  className={`${btnPrimary} w-full ${!canSubmit || submitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <FiSend size={18} />
-                  Finalizar no WhatsApp
+                  {submitting ? (
+                    <>
+                      <FiLoader size={18} className="animate-spin" />
+                      Enviando pedido…
+                    </>
+                  ) : (
+                    <>
+                      <FiSend size={18} />
+                      Enviar Pedido
+                    </>
+                  )}
                 </button>
                 {!canSubmit && (
                   <p className="font-sans text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
@@ -597,12 +572,6 @@ export default function CheckoutPage() {
                       : !payment.confirmationChecked
                         ? 'Marque a confirmação de pagamento.'
                         : 'Preencha os dados de pagamento.'}
-                  </p>
-                )}
-
-                {isWaTestMode() && (
-                  <p className="font-sans text-[10px] text-amber-500 text-center mt-1">
-                    (Modo teste WA ativo)
                   </p>
                 )}
 

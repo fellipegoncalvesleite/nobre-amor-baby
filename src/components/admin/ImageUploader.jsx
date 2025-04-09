@@ -22,9 +22,10 @@
  * TODO: Swap ImageUploader storage to Supabase Storage later (upload then store public URL)
  */
 import { useState, useRef, useCallback } from 'react';
-import { FiUpload, FiCamera, FiX, FiChevronUp, FiChevronDown, FiLoader } from 'react-icons/fi';
+import { FiUpload, FiCamera, FiX, FiChevronUp, FiChevronDown, FiLoader, FiCrop } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing } from '../../lib/ui';
+import CropModal from './CropModal';
 
 const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB
 const MAX_DIMENSION = 1600;
@@ -82,6 +83,33 @@ export default function ImageUploader({
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState({}); // id -> true/false
 
+  /* ── Crop state ─────────────────────────────── */
+  const [cropSrc, setCropSrc] = useState(null);       // current image being cropped
+  const cropCallbackRef = useRef(null);               // resolve fn for current crop
+
+  /**
+   * Opens CropModal for a single image. Returns a promise that resolves with the
+   * cropped dataUrl (or null if cancelled).
+   */
+  const cropImage = useCallback((dataUrl) => {
+    return new Promise((resolve) => {
+      cropCallbackRef.current = resolve;
+      setCropSrc(dataUrl);
+    });
+  }, []);
+
+  const handleCropDone = useCallback((croppedDataUrl) => {
+    cropCallbackRef.current?.(croppedDataUrl);
+    cropCallbackRef.current = null;
+    setCropSrc(null);
+  }, []);
+
+  const handleCropCancel = useCallback(() => {
+    cropCallbackRef.current?.(null);
+    cropCallbackRef.current = null;
+    setCropSrc(null);
+  }, []);
+
   const processFiles = useCallback(async (files) => {
     const fileList = Array.from(files);
     const remaining = maxImages - images.length;
@@ -106,9 +134,15 @@ export default function ImageUploader({
         continue;
       }
       try {
-        const dataUrl = await resizeImage(file);
+        const rawDataUrl = await resizeImage(file);
+        // Open 1:1 crop modal
+        const croppedDataUrl = await cropImage(rawDataUrl);
+        if (!croppedDataUrl) {
+          // User cancelled the crop — skip this image
+          continue;
+        }
         const id = generateId();
-        newImages.push({ id, src: dataUrl, alt: file.name, _file: file, _uploading: !!onUpload });
+        newImages.push({ id, src: croppedDataUrl, alt: file.name, _file: file, _uploading: !!onUpload });
       } catch {
         toast.error(`Erro ao processar "${file.name}".`, { style: toastStyle });
       }
@@ -138,7 +172,7 @@ export default function ImageUploader({
         }
       }
     }
-  }, [images, maxImages, onChange, onUpload]);
+  }, [images, maxImages, onChange, onUpload, cropImage]);
 
   const handleGalleryChange = (e) => {
     if (e.target.files?.length) processFiles(e.target.files);
@@ -190,6 +224,10 @@ export default function ImageUploader({
       {aspectHint && (
         <p className="font-sans text-xs text-baby-text/50">{aspectHint}</p>
       )}
+      <p className="font-sans text-xs text-baby-text/40 flex items-center gap-1">
+        <FiCrop size={11} className="shrink-0" />
+        A imagem será cortada em formato quadrado (1:1).
+      </p>
 
       {/* Drop zone */}
       {!atLimit && (
@@ -347,6 +385,16 @@ export default function ImageUploader({
       <p className="font-sans text-xs text-baby-text/40">
         {images.length} / {maxImages} imagem(ns)
       </p>
+
+      {/* Crop Modal */}
+      {cropSrc && (
+        <CropModal
+          imageSrc={cropSrc}
+          onCrop={handleCropDone}
+          onCancel={handleCropCancel}
+          outputSize={1024}
+        />
+      )}
     </div>
   );
 }

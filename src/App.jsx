@@ -18,6 +18,9 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminOrdersPage from './pages/AdminOrdersPage';
 import AdminOrderDetailPage from './pages/AdminOrderDetailPage';
 import AdminCatalogPage from './pages/AdminCatalogPage';
+import OrderSuccessPage from './pages/OrderSuccessPage';
+import MeusPedidosPage from './pages/MeusPedidosPage';
+import CustomerOrderDetailPage from './pages/CustomerOrderDetailPage';
 import DebugPage from './pages/DebugPage';
 import StaticPage from './pages/StaticPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -54,6 +57,9 @@ function App() {
           <Route path="/favoritos" element={<WishlistPage />} />
           <Route path="/carrinho" element={<CartPage />} />
           <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
+          <Route path="/pedido-enviado" element={<OrderSuccessPage />} />
+          <Route path="/meus-pedidos" element={<MeusPedidosPage />} />
+          <Route path="/meus-pedidos/:orderCode" element={<CustomerOrderDetailPage />} />
           <Route path="/entrar" element={<LoginPage />} />
           <Route path="/admin" element={<ProtectedRoute role="manager"><AdminDashboardPage /></ProtectedRoute>} />
           <Route path="/admin/pedidos" element={<ProtectedRoute role="manager"><AdminOrdersPage /></ProtectedRoute>} />
