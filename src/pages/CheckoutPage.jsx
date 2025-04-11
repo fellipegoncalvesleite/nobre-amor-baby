@@ -182,13 +182,29 @@ export default function CheckoutPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderPayload),
       });
-      const apiData = await apiRes.json();
+
+      let apiData;
+      try {
+        const text = await apiRes.text();
+        apiData = JSON.parse(text);
+      } catch {
+        console.error('[checkout] Response not JSON, status:', apiRes.status);
+        toast.error(`Erro ${apiRes.status}: servidor retornou resposta inválida.`, {
+          style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+          duration: 5000,
+        });
+        setSubmitting(false);
+        return;
+      }
+
       if (apiRes.ok && apiData.orderCode) {
         orderId = apiData.orderCode;
       } else {
-        console.warn('[checkout] API /api/orders error:', apiData);
-        toast.error('Erro ao registrar pedido. Tente novamente.', {
+        const msg = apiData?.detail || apiData?.message || `Status ${apiRes.status}`;
+        console.warn('[checkout] API /api/orders error:', apiRes.status, apiData);
+        toast.error(`Erro ao registrar pedido: ${msg}`, {
           style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+          duration: 5000,
         });
         setSubmitting(false);
         return;
@@ -197,6 +213,7 @@ export default function CheckoutPage() {
       console.error('[checkout] API /api/orders failed:', err);
       toast.error('Falha na conexão. Verifique sua internet e tente novamente.', {
         style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+        duration: 5000,
       });
       setSubmitting(false);
       return;

@@ -136,7 +136,13 @@ export default async function handler(req, res) {
 
     if (orderErr) {
       console.error('[orders] insert order error:', orderErr);
-      return json(res, 500, { error: 'db_error', message: 'Failed to create order.' });
+      return json(res, 500, {
+        error: 'db_error',
+        message: 'Failed to create order.',
+        detail: orderErr.message || String(orderErr),
+        hint: orderErr.hint || null,
+        code: orderErr.code || null,
+      });
     }
 
     /* ── insert items ────────────────────────────── */
@@ -153,7 +159,13 @@ export default async function handler(req, res) {
     const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
     if (itemsErr) {
       console.error('[orders] insert items error:', itemsErr);
-      // Order was created but items failed — log but still return order info
+      // Order was created but items failed — return warning
+      return json(res, 201, {
+        orderId: order.id,
+        orderCode: order.order_code,
+        status: 'new',
+        warning: 'Order created but items failed: ' + (itemsErr.message || String(itemsErr)),
+      });
     }
 
     console.log('[orders] created %s (id=%s, items=%d, total=%d)',
