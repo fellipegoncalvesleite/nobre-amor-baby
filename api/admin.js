@@ -41,7 +41,7 @@ function sanitizeFilename(name) {
     .slice(0, 60);
 }
 
-const ALLOWED_STATUSES = ['new', 'confirmed', 'rejected'];
+const ALLOWED_STATUSES = ['new', 'confirmed', 'rejected', 'cancelled', 'packing', 'shipped', 'done'];
 
 /* ── handler ─────────────────────────────────────── */
 

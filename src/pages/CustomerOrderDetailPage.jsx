@@ -6,17 +6,19 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiPackage, FiRefreshCw, FiMapPin, FiTruck, FiCreditCard,
-  FiAlertTriangle, FiArrowLeft, FiCheck, FiX, FiClock,
+  FiAlertTriangle, FiArrowLeft, FiCheck, FiX, FiClock, FiSlash,
 } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import { formatPrice, focusRing, btnSecondary } from '../lib/ui';
 
 const STATUS_MAP = {
   new: { label: 'Pendente', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', icon: FiClock },
   confirmed: { label: 'Confirmado', color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300', icon: FiCheck },
   rejected: { label: 'Recusado', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', icon: FiX },
+  cancelled: { label: 'Cancelado', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300', icon: FiSlash },
   packing: { label: 'Embalando', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300', icon: FiPackage },
   shipped: { label: 'Enviado', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300', icon: FiTruck },
   done: { label: 'Concluído', color: 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-300', icon: FiCheck },
@@ -27,6 +29,9 @@ export default function CustomerOrderDetailPage() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   const fetchOrder = useCallback(async () => {
     setLoading(true);
@@ -53,6 +58,41 @@ export default function CustomerOrderDetailPage() {
     const d = new Date(iso);
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
       + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  /* ── Cancel order ──────────────────────────────── */
+  const handleCancel = async () => {
+    if (!cancelReason.trim() || cancelReason.trim().length < 3) {
+      toast.error('Informe o motivo do cancelamento.', {
+        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+      });
+      return;
+    }
+    setCancelling(true);
+    try {
+      const res = await fetch('/api/public?resource=cancel-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderCode, reason: cancelReason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Erro ao cancelar pedido.');
+      }
+      toast.success('Pedido cancelado com sucesso.', {
+        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+      });
+      setCancelModalOpen(false);
+      setCancelReason('');
+      fetchOrder(); // refresh
+    } catch (err) {
+      console.error('[CustomerOrderDetail] cancel error:', err);
+      toast.error(err.message, {
+        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+      });
+    } finally {
+      setCancelling(false);
+    }
   };
 
   /* ── Loading ────────────────────────────────────── */
@@ -147,6 +187,16 @@ export default function CustomerOrderDetailPage() {
             </div>
           )}
 
+          {order.status === 'cancelled' && order.cancel_reason && (
+            <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
+              <p className="font-sans text-xs font-medium text-orange-600 dark:text-orange-400 mb-1">Pedido cancelado pelo cliente:</p>
+              <p className="font-sans text-sm text-orange-700 dark:text-orange-300">{order.cancel_reason}</p>
+              {order.cancelled_at && (
+                <p className="font-sans text-xs text-orange-500 mt-1">Em {formatDate(order.cancelled_at)}</p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-6">
             {/* ── Shipping ──────────────────────────── */}
             <Card icon={FiTruck} title="Entrega">
@@ -215,6 +265,22 @@ export default function CustomerOrderDetailPage() {
             </div>
           </div>
 
+          {/* Cancel button — only for pending orders */}
+          {order.status === 'new' && (
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setCancelModalOpen(true)}
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-sans text-sm font-medium
+                           transition-colors bg-orange-100 text-orange-700 hover:bg-orange-200
+                           dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 ${focusRing}`}
+              >
+                <FiSlash size={15} />
+                Cancelar Pedido
+              </button>
+            </div>
+          )}
+
           {/* Back */}
           <div className="mt-8 flex flex-wrap gap-3 justify-center">
             <Link to="/meus-pedidos" className={btnSecondary}>
@@ -226,6 +292,68 @@ export default function CustomerOrderDetailPage() {
             </Link>
           </div>
         </motion.div>
+
+        {/* ══════════════════════════════════════════════
+            CANCEL MODAL
+            ══════════════════════════════════════════════ */}
+        <AnimatePresence>
+          {cancelModalOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+              onClick={() => setCancelModalOpen(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-surface rounded-2xl shadow-xl w-full max-w-md p-6"
+              >
+                <h3 className="font-serif text-lg text-baby-text mb-1">Cancelar pedido</h3>
+                <p className="font-sans text-sm text-baby-text/60 mb-4">
+                  Informe o motivo do cancelamento do pedido <strong>{order.order_code}</strong>.
+                </p>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  rows={3}
+                  autoFocus
+                  placeholder="Ex: comprei errado, mudei de ideia, encontrei outro produto…"
+                  className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream p-3
+                             font-sans text-sm text-baby-text placeholder-baby-text/40
+                             focus:outline-none focus:ring-2 focus:ring-baby-accent focus:border-transparent
+                             resize-y ${focusRing}`}
+                />
+                <div className="flex gap-2 justify-end mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setCancelModalOpen(false)}
+                    className={`px-4 py-2 rounded-full font-sans text-sm border border-baby-text/15
+                               text-baby-text/60 hover:text-baby-accent hover:border-baby-accent
+                               transition-colors ${focusRing}`}
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={cancelling || cancelReason.trim().length < 3}
+                    onClick={handleCancel}
+                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                               transition-colors disabled:opacity-40
+                               bg-orange-600 text-white hover:bg-orange-700 ${focusRing}`}
+                  >
+                    <FiSlash size={14} />
+                    {cancelling ? 'Cancelando…' : 'Confirmar cancelamento'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </section>
   );

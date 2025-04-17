@@ -21,6 +21,7 @@ const STATUS_LABELS = {
   new: 'Novo',
   confirmed: 'Confirmado',
   rejected: 'Rejeitado',
+  cancelled: 'Cancelado pelo cliente',
   packing: 'Embalando',
   shipped: 'Enviado',
   done: 'Concluído',
@@ -30,6 +31,7 @@ const STATUS_COLORS = {
   new: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   confirmed: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
   rejected: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  cancelled: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
   packing: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
   shipped: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
   done: 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-300',
@@ -287,6 +289,17 @@ export default function AdminOrderDetailPage() {
                 <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
                   <p className="font-sans text-xs font-medium text-red-600 dark:text-red-400 mb-1">Motivo da recusa:</p>
                   <p className="font-sans text-sm text-red-700 dark:text-red-300">{order.rejected_reason}</p>
+                </div>
+              )}
+
+              {/* Cancelled by customer display */}
+              {order.status === 'cancelled' && order.cancel_reason && (
+                <div className="mb-3 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
+                  <p className="font-sans text-xs font-medium text-orange-600 dark:text-orange-400 mb-1">Cancelado pelo cliente:</p>
+                  <p className="font-sans text-sm text-orange-700 dark:text-orange-300">{order.cancel_reason}</p>
+                  {order.cancelled_at && (
+                    <p className="font-sans text-xs text-orange-500 mt-1">Em {formatDate(order.cancelled_at)}</p>
+                  )}
                 </div>
               )}
 
