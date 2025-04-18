@@ -7,7 +7,7 @@
  * TODO: replace with real session-based auth before going public.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiPackage, FiRefreshCw, FiMapPin, FiTruck, FiCreditCard, FiUser,
@@ -43,6 +43,7 @@ const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12p
 
 export default function AdminOrderDetailPage() {
   const { orderCode } = useParams();
+  const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -106,11 +107,9 @@ export default function AdminOrderDetailPage() {
   const handleConfirm = async () => {
     setActionLoading(true);
     try {
-      const updated = await patchOrder({ status: 'confirmed' });
-      setOrder(updated);
-      setNotesText(updated.manager_notes || '');
-      setNotesDirty(false);
+      await patchOrder({ status: 'confirmed' });
       toast.success('Pedido confirmado!', { style: toastStyle });
+      navigate('/admin/pedidos');
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -125,13 +124,9 @@ export default function AdminOrderDetailPage() {
     }
     setActionLoading(true);
     try {
-      const updated = await patchOrder({ status: 'rejected', rejected_reason: rejectReason.trim() });
-      setOrder(updated);
-      setNotesText(updated.manager_notes || '');
-      setNotesDirty(false);
-      setRejectModalOpen(false);
-      setRejectReason('');
+      await patchOrder({ status: 'rejected', rejected_reason: rejectReason.trim() });
       toast.success('Pedido recusado.', { style: toastStyle });
+      navigate('/admin/pedidos');
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
