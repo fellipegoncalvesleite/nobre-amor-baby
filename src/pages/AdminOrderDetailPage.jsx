@@ -3,8 +3,7 @@
  *
  * Route: /admin/pedidos/:orderCode  (ProtectedRoute role="manager")
  *
- * MVP: uses VITE_ADMIN_API_KEY in the header.
- * TODO: replace with real session-based auth before going public.
+ * Auth: uses JWT accessToken from AuthContext.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
@@ -16,6 +15,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { formatPrice, focusRing, btnSecondary, btnPrimary } from '../lib/ui';
+import { useAuth } from '../context/AuthContext';
 
 const STATUS_LABELS = {
   new: 'Novo',
@@ -37,13 +37,12 @@ const STATUS_COLORS = {
   done: 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-300',
 };
 
-const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
-
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
 export default function AdminOrderDetailPage() {
   const { orderCode } = useParams();
   const navigate = useNavigate();
+  const { accessToken } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -61,7 +60,7 @@ export default function AdminOrderDetailPage() {
     setError(null);
     try {
       const res = await fetch(`/api/admin?resource=orders&id=${orderCode}`, {
-        headers: { 'x-admin-key': ADMIN_KEY },
+        headers: { 'Authorization': `Bearer ${accessToken}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Erro ao buscar pedido');
@@ -94,7 +93,7 @@ export default function AdminOrderDetailPage() {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'x-admin-key': ADMIN_KEY,
+        'Authorization': `Bearer ${accessToken}`,
       },
       body: JSON.stringify(body),
     });

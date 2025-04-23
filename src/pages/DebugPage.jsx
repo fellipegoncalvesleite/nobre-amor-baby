@@ -38,7 +38,7 @@ const normalise = (s) =>
 
 export default function DebugPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const { products, setStock, resetCatalog, collections, mode, refresh, isLoading: catalogLoading } = useCatalog();
   const { cart, addToCart, clearCart, cartCount, shipping, setShipping, clearShipping, address, setAddress, clearAddress, payment, setPayment, setPaymentCard, resetPayment } = useStore();
 
@@ -1350,9 +1350,8 @@ export default function DebugPage() {
                   setOrderListLoading(true);
                   setOrderListResult(null);
                   try {
-                    const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
                     const res = await fetch('/api/admin?resource=orders&limit=5', {
-                      headers: { 'x-admin-key': adminKey },
+                      headers: { 'Authorization': `Bearer ${accessToken}` },
                     });
                     const data = await res.json();
                     setOrderListResult({ ok: res.ok, status: res.status, data });
@@ -1392,10 +1391,9 @@ export default function DebugPage() {
                   setOrderResetLoading(true);
                   setOrderResetResult(null);
                   try {
-                    const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
                     const res = await fetch(`/api/admin?resource=orders&id=${encodeURIComponent(resetOrderCode.trim())}`, {
                       method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
                       body: JSON.stringify({ status: 'new' }),
                     });
                     const data = await res.json();
@@ -1505,9 +1503,8 @@ export default function DebugPage() {
               <button type="button" className={`${miniBtn} bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 text-purple-700 dark:text-purple-300`}
                 onClick={async () => {
                   try {
-                    const key = import.meta.env.VITE_ADMIN_API_KEY;
                     const res = await fetch('/api/admin?resource=products', {
-                      headers: { 'x-admin-key': key },
+                      headers: { 'Authorization': `Bearer ${accessToken}` },
                     });
                     const data = await res.json();
                     toast.success(`Admin products OK — ${data.products?.length || 0} produtos`, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
@@ -1522,9 +1519,8 @@ export default function DebugPage() {
               <button type="button" className={`${miniBtn} bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 text-purple-700 dark:text-purple-300`}
                 onClick={async () => {
                   try {
-                    const key = import.meta.env.VITE_ADMIN_API_KEY;
                     const res = await fetch('/api/admin?resource=home', {
-                      headers: { 'x-admin-key': key },
+                      headers: { 'Authorization': `Bearer ${accessToken}` },
                     });
                     const data = await res.json();
                     toast.success('Admin home settings OK', { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });

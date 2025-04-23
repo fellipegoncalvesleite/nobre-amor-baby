@@ -5,11 +5,9 @@
  */
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiSettings, FiAlertTriangle } from 'react-icons/fi';
+import { FiSettings } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { focusRing, btnSecondary } from '../lib/ui';
-
-const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
@@ -49,27 +47,6 @@ export default function AdminDashboardPage() {
               )}
             </div>
           </div>
-
-          {/* Env var warning */}
-          {!ADMIN_KEY && (
-            <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
-              <div className="flex items-start gap-2">
-                <FiAlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={18} />
-                <div>
-                  <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
-                    <strong>Chave de admin não configurada.</strong> Para que Pedidos e Catálogo funcionem, vá no <strong>Vercel → Settings → Environment Variables</strong> e adicione:
-                  </p>
-                  <ul className="font-sans text-xs text-amber-700 dark:text-amber-300 mt-2 list-disc pl-5 space-y-1">
-                    <li><code>ADMIN_API_KEY</code> — chave secreta qualquer (ex: minha-chave-secreta-123)</li>
-                    <li><code>VITE_ADMIN_API_KEY</code> — mesma chave (para o frontend enviar nos headers)</li>
-                    <li><code>SUPABASE_URL</code> — URL do projeto Supabase</li>
-                    <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — service role key do Supabase</li>
-                  </ul>
-                  <p className="font-sans text-xs text-amber-600 dark:text-amber-400 mt-2">Após adicionar, faça redeploy no Vercel.</p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Dashboard cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

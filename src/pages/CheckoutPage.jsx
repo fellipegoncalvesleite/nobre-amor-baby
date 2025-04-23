@@ -5,12 +5,14 @@ import { FiSend, FiChevronLeft, FiCheck, FiAlertTriangle, FiCreditCard, FiLoader
 import toast from 'react-hot-toast';
 import { useCatalog } from '../context/CatalogContext';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { formatPrice, btnPrimary, btnSecondary } from '../lib/ui';
 import { saveOrderId } from '../utils/orderMessage';
 import ShippingSelector from '../components/ShippingSelector';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
+  const { accessToken } = useAuth();
   const { products, decrementStock } = useCatalog();
   const {
     cart, clearCart,
@@ -179,7 +181,10 @@ export default function CheckoutPage() {
       };
       const apiRes = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify(orderPayload),
       });
 

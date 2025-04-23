@@ -3,14 +3,19 @@
  *
  * All admin calls go through /api/admin?resource=xxx&id=yyy
  *
- * TODO: replace VITE_ADMIN_API_KEY with real session-based auth.
+ * Auth: uses JWT accessToken from AuthContext (Authorization: Bearer <token>).
  */
 
-const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
+let _accessToken = '';
+
+/** Called from admin pages to set the current access token. */
+export function setAdminAccessToken(token) {
+  _accessToken = token || '';
+}
 
 const headers = (extra = {}) => ({
   'Content-Type': 'application/json',
-  'x-admin-key': ADMIN_KEY,
+  ..._accessToken ? { 'Authorization': `Bearer ${_accessToken}` } : {},
   ...extra,
 });
 

@@ -20,6 +20,7 @@
 
 /* eslint-disable no-undef */
 import { createClient } from '@supabase/supabase-js';
+import { verifyUser } from './_supabaseAdmin.js';
 
 /* ── helpers ─────────────────────────────────────────── */
 
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
   /* ── CORS ──────────────────────────────────────── */
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   if (req.method !== 'POST') {
@@ -104,6 +105,13 @@ export default async function handler(req, res) {
     }
 
     /* ── insert order ────────────────────────────── */
+    // If the user is authenticated, link order to their user_id
+    let userId = null;
+    try {
+      const { user: authUser } = await verifyUser(req);
+      if (authUser) userId = authUser.id;
+    } catch { /* no token or invalid — ok */ }
+
     const orderRow = {
       order_code:           orderCode,
       status:               'new',
@@ -126,6 +134,7 @@ export default async function handler(req, res) {
       paid_total_cents:     payment?.paidTotalCents ?? null,
       payment_method:       payment?.method || null,
       payment_ref:          payment?.ref || payment?.pixId || null,
+      ...(userId ? { user_id: userId } : {}),
     };
 
     const { data: order, error: orderErr } = await supabase
