@@ -169,7 +169,7 @@ export default function LoginPage() {
 
                 <button
                   type="submit"
-                  disabled={busy}
+                  disabled={busy || !email.trim()}
                   className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
                              bg-baby-accent text-white font-sans text-sm font-medium
                              hover:bg-baby-accent/90 transition-colors disabled:opacity-50 ${focusRing}`}
