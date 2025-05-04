@@ -18,9 +18,9 @@ import { focusRing } from '../lib/ui';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
-const inputCls = `w-full px-4 py-3 rounded-xl border border-baby-text/15 bg-surface
-                  font-sans text-baby-text placeholder:text-baby-text/30
-                  transition-colors hover:border-baby-accent/40
+const inputCls = `w-full px-4 py-3 rounded-xl border border-baby-text/30 bg-white dark:bg-gray-900
+                  font-sans text-baby-text placeholder:text-baby-text/40
+                  transition-colors hover:border-baby-accent/60
                   focus:outline-none focus:ring-2 focus:ring-baby-accent focus:border-transparent`;
 
 const oauthBtnCls = `w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl
@@ -136,8 +136,8 @@ export default function LoginPage() {
   const tabCls = (t) =>
     `flex-1 py-2.5 text-center font-sans text-sm font-medium transition-colors rounded-xl cursor-pointer ${
       tab === t
-        ? 'bg-baby-accent text-white'
-        : 'text-baby-text/50 hover:text-baby-text/80'
+        ? 'bg-baby-accent text-white shadow-sm'
+        : 'text-baby-text/70 hover:text-baby-text'
     }`;
 
   return (
@@ -159,7 +159,7 @@ export default function LoginPage() {
           className="bg-surface rounded-2xl p-6 sm:p-8 shadow-soft"
         >
           {/* ─── Tabs ────────────────────────────────── */}
-          <div className="flex gap-2 bg-baby-text/5 rounded-xl p-1 mb-6">
+          <div className="flex gap-2 bg-baby-text/10 rounded-xl p-1 mb-6">
             <button type="button" onClick={() => { setTab('login'); setSignupDone(false); }} className={tabCls('login')}>
               Entrar
             </button>
@@ -171,13 +171,13 @@ export default function LoginPage() {
           {/* ═══════════════ LOGIN TAB ═══════════════ */}
           {tab === 'login' && (
             <>
-              <p className="font-sans text-baby-text/50 text-sm text-center mb-6">
+              <p className="font-sans text-baby-text/60 text-sm text-center mb-6">
                 Acesse sua conta para acompanhar pedidos.
               </p>
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label htmlFor="login-email" className="block font-sans text-sm text-baby-text/70 mb-1.5">
+                  <label htmlFor="login-email" className="block font-sans text-sm text-baby-text font-medium mb-1.5">
                     E-mail
                   </label>
                   <input
@@ -193,7 +193,7 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="login-password" className="block font-sans text-sm text-baby-text/70 mb-1.5">
+                  <label htmlFor="login-password" className="block font-sans text-sm text-baby-text font-medium mb-1.5">
                     Senha
                   </label>
                   <div className="relative">
@@ -238,9 +238,9 @@ export default function LoginPage() {
 
               {/* ─── Divider ─────────────────────────── */}
               <div className="flex items-center gap-4 my-6">
-                <div className="flex-1 h-px bg-baby-text/10" />
-                <span className="font-sans text-xs text-baby-text/40 uppercase tracking-wider">ou</span>
-                <div className="flex-1 h-px bg-baby-text/10" />
+                <div className="flex-1 h-px bg-baby-text/20" />
+                <span className="font-sans text-xs text-baby-text/50 uppercase tracking-wider">ou</span>
+                <div className="flex-1 h-px bg-baby-text/20" />
               </div>
 
               {/* ─── Google OAuth ─────────────────────── */}
@@ -248,7 +248,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => handleOAuth('google')}
                 disabled={busy}
-                className={`${oauthBtnCls} bg-white dark:bg-gray-800 border-baby-text/15
+                className={`${oauthBtnCls} bg-white dark:bg-gray-800 border-baby-text/25
                            text-baby-text hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50`}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -285,13 +285,13 @@ export default function LoginPage() {
                 </div>
               ) : (
                 <>
-                  <p className="font-sans text-baby-text/50 text-sm text-center mb-6">
+                  <p className="font-sans text-baby-text/70 text-sm text-center mb-6">
                     Crie sua conta para acompanhar seus pedidos.
                   </p>
 
                   <form onSubmit={handleSignup} className="space-y-4">
                     <div>
-                      <label htmlFor="signup-name" className="block font-sans text-sm text-baby-text/70 mb-1.5">
+                      <label htmlFor="signup-name" className="block font-sans text-sm text-baby-text font-medium mb-1.5">
                         Nome
                       </label>
                       <input
@@ -307,7 +307,7 @@ export default function LoginPage() {
                     </div>
 
                     <div>
-                      <label htmlFor="signup-lastname" className="block font-sans text-sm text-baby-text/70 mb-1.5">
+                      <label htmlFor="signup-lastname" className="block font-sans text-sm text-baby-text font-medium mb-1.5">
                         Sobrenome
                       </label>
                       <input
@@ -323,7 +323,7 @@ export default function LoginPage() {
                     </div>
 
                     <div>
-                      <label htmlFor="signup-email" className="block font-sans text-sm text-baby-text/70 mb-1.5">
+                      <label htmlFor="signup-email" className="block font-sans text-sm text-baby-text font-medium mb-1.5">
                         E-mail
                       </label>
                       <input
@@ -339,7 +339,7 @@ export default function LoginPage() {
                     </div>
 
                     <div>
-                      <label htmlFor="signup-password" className="block font-sans text-sm text-baby-text/70 mb-1.5">
+                      <label htmlFor="signup-password" className="block font-sans text-sm text-baby-text font-medium mb-1.5">
                         Senha
                       </label>
                       <div className="relative">
@@ -378,9 +378,9 @@ export default function LoginPage() {
 
                   {/* ─── Divider ─────────────────────────── */}
                   <div className="flex items-center gap-4 my-6">
-                    <div className="flex-1 h-px bg-baby-text/10" />
-                    <span className="font-sans text-xs text-baby-text/40 uppercase tracking-wider">ou</span>
-                    <div className="flex-1 h-px bg-baby-text/10" />
+                    <div className="flex-1 h-px bg-baby-text/20" />
+                    <span className="font-sans text-xs text-baby-text/50 uppercase tracking-wider">ou</span>
+                    <div className="flex-1 h-px bg-baby-text/20" />
                   </div>
 
                   {/* ─── Google OAuth ─────────────────────── */}
@@ -388,7 +388,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => handleOAuth('google')}
                     disabled={busy}
-                    className={`${oauthBtnCls} bg-white dark:bg-gray-800 border-baby-text/15
+                    className={`${oauthBtnCls} bg-white dark:bg-gray-800 border-baby-text/25
                                text-baby-text hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50`}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -406,7 +406,7 @@ export default function LoginPage() {
         </motion.div>
 
         {/* Help text */}
-        <p className="font-sans text-xs text-baby-text/40 text-center mt-6 max-w-sm mx-auto">
+        <p className="font-sans text-xs text-baby-text/60 text-center mt-6 max-w-sm mx-auto">
           Ao entrar, você concorda com nossos{' '}
           <Link to="/termos" className="underline hover:text-baby-accent">Termos de Uso</Link> e{' '}
           <Link to="/privacidade" className="underline hover:text-baby-accent">Política de Privacidade</Link>.
