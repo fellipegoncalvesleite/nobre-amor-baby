@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiSearch,
@@ -40,6 +40,7 @@ export default function Header() {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const { cartCount, wishlist } = useStore();
   const { isAuthed, user: authUser, logout } = useAuth();
+  const location = useLocation();
   const accountRef = useRef(null);
 
   useEffect(() => {
@@ -206,6 +207,7 @@ export default function Header() {
                 {!isAuthed && (
                   <Link
                     to="/entrar"
+                    state={{ from: location.pathname }}
                     className="absolute inset-0"
                     aria-label="Entrar na conta"
                     tabIndex={-1}
@@ -492,6 +494,7 @@ export default function Header() {
                   ) : (
                     <Link
                       to="/entrar"
+                      state={{ from: location.pathname }}
                       onClick={closeMobile}
                       className="flex items-center gap-2 min-h-12 px-4 py-2 rounded-xl
                                  text-baby-text/80 hover:text-baby-text

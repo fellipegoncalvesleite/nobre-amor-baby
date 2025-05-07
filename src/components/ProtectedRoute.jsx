@@ -16,6 +16,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { FiLoader } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { setAdminAccessToken } from '../lib/adminApi';
+import { saveReturnPath } from '../lib/authReturn';
 
 export default function ProtectedRoute({ children, role }) {
   const { isAuthed, hasRole, loading, accessToken } = useAuth();
@@ -35,6 +36,7 @@ export default function ProtectedRoute({ children, role }) {
   }
 
   if (!isAuthed) {
+    saveReturnPath(location.pathname + location.search);
     return <Navigate to="/entrar" state={{ from: location.pathname }} replace />;
   }
 

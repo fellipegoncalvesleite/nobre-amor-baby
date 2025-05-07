@@ -46,6 +46,17 @@ export function AuthProvider({ children }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      // Debug: log auth events to sessionStorage + console
+      if (import.meta.env.DEV) {
+        console.log(`[Auth] Event: ${_event}`, { hasSession: !!s, userId: s?.user?.id });
+      }
+      try {
+        const logs = JSON.parse(sessionStorage.getItem('nobre_amor_auth_debug') || '[]');
+        logs.push({ event: _event, timestamp: new Date().toISOString(), hasSession: !!s, userId: s?.user?.id ?? null });
+        if (logs.length > 20) logs.splice(0, logs.length - 20);
+        sessionStorage.setItem('nobre_amor_auth_debug', JSON.stringify(logs));
+      } catch { /* ok */ }
+
       setSession(s);
       if (s?.user) {
         fetchProfile(s.user.id);
@@ -65,7 +76,7 @@ export function AuthProvider({ children }) {
       password,
       options: {
         data: { full_name: fullName, first_name: firstName, last_name: lastName || '' },
-        emailRedirectTo: window.location.origin + '/entrar',
+        emailRedirectTo: window.location.origin + '/auth/callback',
       },
     });
     if (error) throw error;
@@ -81,7 +92,7 @@ export function AuthProvider({ children }) {
       email,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: window.location.origin + '/entrar',
+        emailRedirectTo: window.location.origin + '/auth/callback',
       },
     });
     if (error) throw error;
@@ -91,7 +102,7 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: window.location.origin + '/entrar',
+        redirectTo: window.location.origin + '/auth/callback',
       },
     });
     if (error) throw error;
