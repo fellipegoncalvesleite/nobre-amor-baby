@@ -94,9 +94,14 @@ export default function LoginPage() {
       toast.success('Conta criada! Verifique seu e-mail para confirmar.', { style: toastStyle, duration: 5000 });
     } catch (err) {
       console.error('[LoginPage] signup error:', err);
-      const msg = err.message?.includes('already registered')
-        ? 'Este e-mail já está cadastrado. Tente entrar.'
-        : (err.message || 'Falha ao criar conta.');
+      let msg = err.message || 'Falha ao criar conta.';
+      if (err.message?.includes('already registered')) {
+        msg = 'Este e-mail já está cadastrado. Tente entrar.';
+      } else if (err.message?.includes('sending confirmation') || err.message?.includes('sending email')) {
+        msg = 'Erro ao enviar e-mail de confirmação. Tente novamente em alguns minutos.';
+      } else if (err.message?.includes('rate limit') || err.message?.includes('too many')) {
+        msg = 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+      }
       toast.error(msg, { style: toastStyle });
     } finally {
       setBusy(false);
