@@ -49,6 +49,8 @@ export default function LoginPage() {
   const [name, setName] = useState('');
   const [lastName, setLastName] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [signupDone, setSignupDone] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -82,16 +84,20 @@ export default function LoginPage() {
   /* ── Signup ────────────────────────────────────── */
   const handleSignup = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !lastName.trim() || !email.trim() || !password) return;
+    if (!name.trim() || !lastName.trim() || !email.trim() || !password || !confirmPassword) return;
     if (password.length < 6) {
       toast.error('A senha deve ter pelo menos 6 caracteres.', { style: toastStyle });
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error('As senhas não coincidem.', { style: toastStyle });
       return;
     }
     setBusy(true);
     try {
       await signUp(email.trim(), password, name.trim(), lastName.trim());
       setSignupDone(true);
-      toast.success('Conta criada! Verifique seu e-mail para confirmar.', { style: toastStyle, duration: 5000 });
+      toast.success('Conta criada! Verifique seu e-mail para concluir o cadastro.', { style: toastStyle, duration: 5000 });
     } catch (err) {
       console.error('[LoginPage] signup error:', err);
       let msg = err.message || 'Falha ao criar conta.';
@@ -287,14 +293,14 @@ export default function LoginPage() {
                   <h2 className="font-serif text-xl text-baby-text">Verifique seu e-mail</h2>
                   <p className="font-sans text-sm text-baby-text/60">
                     Enviamos um link de confirmação para <strong className="text-baby-text">{email}</strong>.
-                    <br />Clique no link do e-mail para ativar sua conta.
+                    <br />Clique no link do e-mail para concluir o cadastro.
                   </p>
                   <button
                     type="button"
                     onClick={() => { setTab('login'); setSignupDone(false); }}
                     className="font-sans text-sm text-baby-accent hover:underline"
                   >
-                    Ir para login
+                    Voltar para entrar
                   </button>
                 </div>
               ) : (
@@ -378,9 +384,35 @@ export default function LoginPage() {
                       </div>
                     </div>
 
+                    <div>
+                      <label htmlFor="signup-confirm-password" className="block font-sans text-sm text-baby-text font-medium mb-1.5">
+                        Confirmar senha
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="signup-confirm-password"
+                          type={showConfirmPw ? 'text' : 'password'}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Repita a senha"
+                          autoComplete="new-password"
+                          disabled={busy}
+                          className={`${inputCls} pr-11 ${focusRing}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPw(!showConfirmPw)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-baby-text/40 hover:text-baby-text/70 transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showConfirmPw ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+
                     <button
                       type="submit"
-                      disabled={busy || !name.trim() || !lastName.trim() || !email.trim() || password.length < 6}
+                      disabled={busy || !name.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !confirmPassword}
                       className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
                                  bg-baby-accent text-white font-sans text-sm font-medium
                                  hover:bg-baby-accent/90 transition-colors disabled:opacity-50 ${focusRing}`}
