@@ -40,8 +40,6 @@ const DEFAULT_LENGTH_CM = 15;
 /** Store origin CEP used when fromCep is not supplied */
 const FALLBACK_FROM_CEP = '35502825';
 
-/* eslint-disable no-undef */
-
 /** Helper — always return JSON, never HTML or empty body */
 function jsonResponse(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');

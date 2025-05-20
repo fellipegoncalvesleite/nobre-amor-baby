@@ -46,15 +46,20 @@ const initialAddress = {
 };
 
 const initialPayment = {
-  method: 'cartao',                  // 'cartao' | 'pix'
-  status: 'simulado_pendente',       // 'simulado_pendente' | 'simulado_confirmado'
-  card: { name: '', numberLast4: '', brand: '', installments: 1 },
-  pixId: '',                         // optional pix receipt id
-  paidTotalCents: 0,                 // value user says they paid
-  paidShippingCents: 0,              // shipping portion
-  paidAtISO: '',                     // ISO timestamp when confirmed
-  confirmationChecked: false,        // "confirmo" checkbox
+  method: 'pix',                     // 'cartao' | 'pix'
+  card: { installments: 1 },
+  lastOrder: null,                   // latest API response used by the success page / retry flow
 };
+
+function migratePayment(loaded) {
+  if (!loaded || typeof loaded !== 'object') return { ...initialPayment };
+  return {
+    ...initialPayment,
+    method: loaded.method === 'cartao' ? 'cartao' : 'pix',
+    card: { ...initialPayment.card, ...(loaded.card || {}) },
+    lastOrder: loaded.lastOrder || null,
+  };
+}
 
 /** Migrate old shipping state shapes to current shape. */
 function migrateShipping(loaded) {
@@ -77,7 +82,7 @@ const initialState = {
   /** Address state (persisted) */
   address: load('address', initialAddress),
   /** Payment state (persisted) */
-  payment: { ...initialPayment, ...load('payment', initialPayment) },
+  payment: migratePayment(load('payment', initialPayment)),
 };
 
 /* ── Reducer ──────────────────────────────────────────── */

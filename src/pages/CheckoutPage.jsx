@@ -1,611 +1,405 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiSend, FiChevronLeft, FiCheck, FiAlertTriangle, FiCreditCard, FiLoader } from 'react-icons/fi';
+import {
+  FiAlertTriangle,
+  FiCheckCircle,
+  FiChevronLeft,
+  FiClock,
+  FiCreditCard,
+  FiLoader,
+  FiSend,
+} from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import ShippingSelector from '../components/ShippingSelector';
+import { useAuth } from '../context/AuthContext';
 import { useCatalog } from '../context/CatalogContext';
 import { useStore } from '../context/StoreContext';
-import { useAuth } from '../context/AuthContext';
-import { formatPrice, btnPrimary, btnSecondary } from '../lib/ui';
+import { formatPrice, btnPrimary, btnSecondary, focusRing } from '../lib/ui';
 import { saveOrderId } from '../utils/orderMessage';
-import ShippingSelector from '../components/ShippingSelector';
+
+const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
+
+function paymentOptionClass(selected) {
+  return `rounded-2xl border p-4 text-left transition-colors ${
+    selected
+      ? 'border-baby-accent bg-baby-accent/8'
+      : 'border-baby-text/15 bg-surface hover:border-baby-accent/40'
+  }`;
+}
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { accessToken } = useAuth();
-  const { products, decrementStock } = useCatalog();
+  const { accessToken, user } = useAuth();
+  const { products } = useCatalog();
   const {
-    cart, clearCart,
-    shipping, clearShipping,
-    address, clearAddress,
-    payment, setPayment, setPaymentCard, resetPayment,
+    cart,
+    clearCart,
+    shipping,
+    clearShipping,
+    address,
+    clearAddress,
+    payment,
+    setPayment,
+    resetPayment,
   } = useStore();
 
-  const items = cart
-    .map((ci) => {
-      const product = products.find((p) => p.id === ci.id);
-      return product ? { ...ci, product } : null;
-    })
-    .filter(Boolean);
+  const [form, setForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    message: '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      name: prev.name || user?.name || '',
+      email: prev.email || user?.email || '',
+    }));
+  }, [user]);
+
+  const items = useMemo(
+    () => cart
+      .map((cartItem) => {
+        const product = products.find((current) => String(current.id) === String(cartItem.id));
+        return product ? { ...cartItem, product } : null;
+      })
+      .filter(Boolean),
+    [cart, products],
+  );
 
   const subtotalCents = useMemo(
-    () => items.reduce((sum, i) => sum + Math.round(i.product.price * 100) * i.qty, 0),
+    () => items.reduce((sum, item) => sum + Math.round(item.product.price * 100) * item.qty, 0),
     [items],
   );
   const shippingCents = shipping.feeCents ?? 0;
-  const suggestedTotalCents = subtotalCents + shippingCents;
+  const totalCents = subtotalCents + shippingCents;
 
-  // Track whether user has manually edited the paid total
-  const [totalManuallyEdited, setTotalManuallyEdited] = useState(false);
-
-  // Auto-sync paidTotalCents & paidShippingCents when subtotal/shipping change (unless manually edited)
-  useEffect(() => {
-    if (!totalManuallyEdited) {
-      setPayment({
-        paidTotalCents: suggestedTotalCents,
-        paidShippingCents: shippingCents,
-      });
-    } else {
-      setPayment({ paidShippingCents: shippingCents });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestedTotalCents, shippingCents]);
-
-  // Shipping validation — fee calculated + address number filled
-  const shippingValid =
+  const shippingValid = Boolean(
     shipping.feeCents != null &&
     !shipping.isLoading &&
     !shipping.error &&
-    address.number.trim().length > 0;
+    address.number.trim(),
+  );
 
-  // Payment validation
-  const paymentValid = useMemo(() => {
-    if (!payment.confirmationChecked) return false;
-    if (payment.paidTotalCents <= 0) return false;
-    if (payment.method === 'cartao') {
-      if (!payment.card?.name?.trim()) return false;
-      if (!/^\d{4}$/.test(payment.card?.numberLast4 || '')) return false;
-    }
-    return true;
-  }, [payment]);
+  const formValid =
+    form.name.trim().length >= 2 &&
+    form.phone.trim().length >= 8 &&
+    form.email.trim().includes('@');
 
-  const canSubmit = shippingValid && paymentValid;
+  const canSubmit = items.length > 0 && shippingValid && formValid && ['pix', 'cartao'].includes(payment.method);
 
-  const [form, setForm] = useState({ name: '', phone: '', email: '', message: '' });
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleChange = (e) =>
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-
-  /* ── Card number handling — extract last 4 only ───── */
-  const [cardNumberDisplay, setCardNumberDisplay] = useState('');
-  const handleCardNumberChange = (e) => {
-    const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
-    // Format for display with spaces every 4 digits
-    const display = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
-    setCardNumberDisplay(display);
-    // Extract last 4 digits
-    const last4 = raw.length >= 4 ? raw.slice(-4) : raw;
-    setPaymentCard({ numberLast4: last4 });
+  const handleField = (field) => (event) => {
+    setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
-  /* ── Card expiry display ──────────────────────────── */
-  const [cardExpiry, setCardExpiry] = useState('');
-  const handleExpiryChange = (e) => {
-    let raw = e.target.value.replace(/\D/g, '').slice(0, 4);
-    if (raw.length > 2) raw = raw.slice(0, 2) + '/' + raw.slice(2);
-    setCardExpiry(raw);
-  };
-
-  /* ── CVV display ──────────────────────────────────── */
-  const [cardCvv, setCardCvv] = useState('');
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     if (!canSubmit || submitting) {
-      toast.error('Preencha todos os dados obrigatórios e marque a confirmação.', {
-        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
-      });
-      return;
-    }
-
-    // Stock validation
-    const stockIssues = items.filter((i) => {
-      const sc = i.product.stockCount ?? 99;
-      return sc < i.qty;
-    });
-    if (stockIssues.length > 0) {
-      toast.error('Estoque insuficiente para alguns itens. Volte ao carrinho e ajuste.', {
-        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
-        duration: 4000,
-      });
+      toast.error('Preencha seus dados, confirme o endereço e escolha um pagamento.', { style: toastStyle });
       return;
     }
 
     setSubmitting(true);
-
-    // Decrement stock
-    for (const item of items) {
-      decrementStock(item.id, item.qty);
-    }
-
-    // Finalize payment state
-    const finalPayment = {
-      ...payment,
-      status: 'simulado_confirmado',
-      paidAtISO: new Date().toISOString(),
-      paidTotalCents: payment.paidTotalCents,
-      paidShippingCents: payment.paidShippingCents,
-    };
-    setPayment(finalPayment);
-
-    /* ── POST order to API ────────────────────── */
-    let orderId;
     try {
-      const orderPayload = {
-        customer: {
-          name: form.name,
-          phone: form.phone || '',
-          email: form.email || '',
-          message: form.message || '',
-        },
-        address: {
-          cep: address.cep || '',
-          street: address.street || '',
-          number: address.number || '',
-          complement: address.complement || '',
-          neighborhood: address.neighborhood || '',
-          city: address.city || '',
-          uf: address.uf || '',
-        },
-        shipping: {
-          feeCents: shippingCents,
-          etaText: shipping.etaText || '',
-          provider: shipping.provider || '',
-        },
-        payment: {
-          method: finalPayment.method || 'pix',
-          paidTotalCents: finalPayment.paidTotalCents,
-          ref: finalPayment.card?.numberLast4
-            ? `cartao_final_${finalPayment.card.numberLast4}`
-            : `${finalPayment.method || 'pix'}_simulado`,
-        },
-        items: items.map((i) => ({
-          productId: String(i.id),
-          productName: i.product.name,
-          size: i.size || '',
-          qty: i.qty,
-          unitPriceCents: Math.round(i.product.price * 100),
-        })),
-      };
-      const apiRes = await fetch('/api/orders', {
+      const response = await fetch('/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify(orderPayload),
+        body: JSON.stringify({
+          customer: {
+            name: form.name.trim(),
+            phone: form.phone.trim(),
+            email: form.email.trim(),
+            message: form.message.trim(),
+          },
+          address,
+          shipping: {
+            feeCents: shipping.feeCents,
+            etaText: shipping.etaText,
+            provider: shipping.source,
+          },
+          payment: {
+            method: payment.method,
+          },
+          items: items.map((item) => ({
+            productId: item.id,
+            productName: item.product.name,
+            size: item.size,
+            qty: item.qty,
+            unitPriceCents: Math.round(item.product.price * 100),
+          })),
+        }),
       });
 
-      let apiData;
-      try {
-        const text = await apiRes.text();
-        apiData = JSON.parse(text);
-      } catch {
-        console.error('[checkout] Response not JSON, status:', apiRes.status);
-        toast.error(`Erro ${apiRes.status}: servidor retornou resposta inválida.`, {
-          style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
-          duration: 5000,
-        });
-        setSubmitting(false);
-        return;
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Não foi possível criar seu pedido.');
       }
 
-      if (apiRes.ok && apiData.orderCode) {
-        orderId = apiData.orderCode;
-      } else {
-        const msg = apiData?.detail || apiData?.message || `Status ${apiRes.status}`;
-        console.warn('[checkout] API /api/orders error:', apiRes.status, apiData);
-        toast.error(`Erro ao registrar pedido: ${msg}`, {
-          style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
-          duration: 5000,
+      saveOrderId(data.orderCode);
+
+      clearCart();
+      clearShipping();
+      clearAddress();
+      resetPayment();
+
+      if (data.warning) {
+        toast('Pedido criado, mas a cobrança precisará ser refeita.', {
+          icon: '⚠️',
+          style: toastStyle,
+          duration: 4000,
         });
-        setSubmitting(false);
-        return;
       }
+
+      navigate(`/pedido-enviado?orderCode=${encodeURIComponent(data.orderCode)}`, {
+        state: {
+          orderCode: data.orderCode,
+          payment: data.payment,
+          warning: data.warning || null,
+        },
+      });
     } catch (err) {
-      console.error('[checkout] API /api/orders failed:', err);
-      toast.error('Falha na conexão. Verifique sua internet e tente novamente.', {
-        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
-        duration: 5000,
-      });
+      console.error('[CheckoutPage] submit error:', err);
+      toast.error(err.message || 'Falha ao criar pedido.', { style: toastStyle });
+    } finally {
       setSubmitting(false);
-      return;
     }
-    saveOrderId(orderId);
-
-    clearCart();
-    clearShipping();
-    clearAddress();
-    resetPayment();
-
-    // Navigate to success page with order code
-    navigate('/pedido-enviado', { state: { orderCode: orderId } });
   };
 
   if (items.length === 0) {
     return (
       <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-        <div className="max-w-lg mx-auto px-4 text-center">
-          <h1 className="font-serif text-3xl text-baby-text mb-4">Carrinho vazio</h1>
-          <p className="font-sans text-baby-text/60 mb-8">Adicione produtos ao carrinho antes de finalizar.</p>
-          <Link to="/" className={btnPrimary}>Explorar Produtos</Link>
+        <div className="max-w-xl mx-auto px-4 sm:px-6 text-center">
+          <FiAlertTriangle size={36} className="mx-auto text-amber-500 mb-4" />
+          <h1 className="font-serif text-2xl text-baby-text mb-3">Seu carrinho está vazio</h1>
+          <p className="font-sans text-baby-text/60 mb-8">
+            Adicione produtos antes de seguir para o checkout.
+          </p>
+          <Link to="/carrinho" className={btnPrimary}>Voltar ao carrinho</Link>
         </div>
       </section>
     );
   }
 
-  const inputCls = `w-full px-4 py-3 rounded-xl border border-baby-text/15 bg-surface
-                    font-sans text-baby-text placeholder-baby-text/40
-                    focus:outline-none focus:ring-2 focus:ring-baby-accent focus:border-transparent
-                    transition-colors`;
-
-  const totalMismatch = payment.paidTotalCents !== suggestedTotalCents && totalManuallyEdited;
-
   return (
     <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Breadcrumb */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <nav className="mb-6 font-sans text-sm text-baby-text/60" aria-label="Navegação de caminho">
-          <ol className="flex items-center gap-1.5">
+          <ol className="flex items-center gap-1.5 flex-wrap">
             <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
             <li aria-hidden="true">/</li>
             <li><Link to="/carrinho" className="hover:text-baby-accent transition-colors">Carrinho</Link></li>
             <li aria-hidden="true">/</li>
-            <li className="text-baby-text font-medium">Finalizar Pedido</li>
+            <li className="text-baby-text font-medium">Checkout</li>
           </ol>
         </nav>
 
-        <h1 className="font-serif text-3xl sm:text-4xl text-baby-text mb-10 text-center">
-          Finalizar Pedido
-        </h1>
-
-        <form onSubmit={handleSubmit}>
-          <div className="grid lg:grid-cols-5 gap-8">
-            {/* ═══ LEFT COLUMN — forms ═══ */}
-            <div className="lg:col-span-3 space-y-5">
-              {/* ── Customer data ──────────────────────── */}
-              <h2 className="font-serif text-xl text-baby-text mb-2">Seus Dados</h2>
-
-              <div>
-                <label htmlFor="ck-name" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                  Nome completo *
-                </label>
-                <input id="ck-name" name="name" type="text" required value={form.name} onChange={handleChange}
-                  placeholder="Maria Silva" className={inputCls} />
-              </div>
-
-              <div>
-                <label htmlFor="ck-phone" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                  Telefone / WhatsApp *
-                </label>
-                <input id="ck-phone" name="phone" type="tel" required value={form.phone} onChange={handleChange}
-                  placeholder="(37) 99999-9999" className={inputCls} />
-              </div>
-
-              <div>
-                <label htmlFor="ck-email" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                  E-mail
-                </label>
-                <input id="ck-email" name="email" type="email" value={form.email} onChange={handleChange}
-                  placeholder="maria@email.com" className={inputCls} />
-              </div>
-
-              <div>
-                <label htmlFor="ck-msg" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                  Observações
-                </label>
-                <textarea id="ck-msg" name="message" rows={3} value={form.message} onChange={handleChange}
-                  placeholder="Alguma observação para o pedido?" className={`${inputCls} resize-none`} />
-              </div>
-
-              {/* ── Shipping ───────────────────────────── */}
-              <div className="pt-2">
-                <ShippingSelector />
-                {!shippingValid && (
-                  <div className="flex items-center gap-2 mt-2 text-amber-600 dark:text-amber-400">
-                    <FiAlertTriangle size={14} />
-                    <p className="font-sans text-xs">Preencha o endereço e aguarde o cálculo do frete.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* ═══ PAYMENT SECTION ═══════════════════ */}
-              <div className="pt-4">
-                <h2 className="font-serif text-xl text-baby-text mb-4 flex items-center gap-2">
-                  <FiCreditCard size={20} className="text-baby-accent" />
-                  Pagamento
-                </h2>
-                <p className="font-sans text-xs text-baby-text/40 mb-4">
-                  (simulação) Seus dados de cartão não são processados nem armazenados por completo.
-                </p>
-
-                {/* Method selector */}
-                <div className="flex gap-2 mb-5">
-                  {[
-                    { value: 'cartao', label: 'Cartão' },
-                    { value: 'pix', label: 'Pix' },
-                  ].map((m) => (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setPayment({ method: m.value })}
-                      className={`flex-1 py-2.5 rounded-xl font-sans text-sm font-medium transition-all border-2
-                        ${payment.method === m.value
-                          ? 'border-baby-accent bg-baby-accent/10 text-baby-accent'
-                          : 'border-baby-text/15 bg-surface text-baby-text/60 hover:border-baby-text/30'
-                        }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-8"
+        >
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <section className="bg-surface rounded-3xl shadow-soft p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-11 h-11 rounded-full bg-baby-pink/40 flex items-center justify-center">
+                  <FiCheckCircle className="text-baby-accent" size={20} />
                 </div>
-
-                {/* Card fields */}
-                {payment.method === 'cartao' && (
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="ck-card-name" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                        Nome no cartão *
-                      </label>
-                      <input
-                        id="ck-card-name"
-                        type="text"
-                        placeholder="MARIA S SILVA"
-                        value={payment.card?.name || ''}
-                        onChange={(e) => setPaymentCard({ name: e.target.value })}
-                        className={inputCls}
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="ck-card-number" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                        Número do cartão *
-                      </label>
-                      <input
-                        id="ck-card-number"
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="0000 0000 0000 0000"
-                        value={cardNumberDisplay}
-                        onChange={handleCardNumberChange}
-                        maxLength={19}
-                        className={inputCls}
-                      />
-                      {payment.card?.numberLast4 && (
-                        <p className="font-sans text-[10px] text-baby-text/30 mt-1">
-                          Armazenado apenas: final **** {payment.card.numberLast4}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label htmlFor="ck-card-exp" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                          Validade (MM/AA)
-                        </label>
-                        <input
-                          id="ck-card-exp"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="12/28"
-                          value={cardExpiry}
-                          onChange={handleExpiryChange}
-                          maxLength={5}
-                          className={inputCls}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="ck-card-cvv" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                          CVV
-                        </label>
-                        <input
-                          id="ck-card-cvv"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="123"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                          maxLength={4}
-                          className={inputCls}
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label htmlFor="ck-installments" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                        Parcelas
-                      </label>
-                      <select
-                        id="ck-installments"
-                        value={payment.card?.installments || 1}
-                        onChange={(e) => setPaymentCard({ installments: Number(e.target.value) })}
-                        className={inputCls}
-                      >
-                        {[1, 2, 3, 4].map((n) => (
-                          <option key={n} value={n}>
-                            {n}x de {formatPrice(suggestedTotalCents / 100 / n)} {n === 1 ? '(à vista)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {/* Pix fields */}
-                {payment.method === 'pix' && (
-                  <div className="space-y-4">
-                    <div>
-                      <label htmlFor="ck-pix-id" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                        ID / Comprovante Pix (opcional)
-                      </label>
-                      <input
-                        id="ck-pix-id"
-                        type="text"
-                        placeholder="E12345678..."
-                        value={payment.pixId || ''}
-                        onChange={(e) => setPayment({ pixId: e.target.value })}
-                        className={inputCls}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Paid total (editable) */}
-                <div className="mt-5">
-                  <label htmlFor="ck-paid-total" className="block font-sans text-sm font-medium text-baby-text mb-1.5">
-                    Valor pago (R$)
-                  </label>
-                  <input
-                    id="ck-paid-total"
-                    type="text"
-                    inputMode="decimal"
-                    value={(payment.paidTotalCents / 100).toFixed(2).replace('.', ',')}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(',', '.').replace(/[^\d.]/g, '');
-                      const cents = Math.round(parseFloat(val || '0') * 100);
-                      setPayment({ paidTotalCents: cents });
-                      setTotalManuallyEdited(true);
-                    }}
-                    className={inputCls}
-                  />
-                  {totalMismatch && (
-                    <p className="font-sans text-xs text-amber-500 mt-1">
-                      Valor difere do calculado ({formatPrice(suggestedTotalCents / 100)}).
-                    </p>
-                  )}
+                <div>
+                  <h1 className="font-serif text-2xl text-baby-text">Finalizar pedido</h1>
+                  <p className="font-sans text-sm text-baby-text/50">
+                    Seus dados, entrega e forma de pagamento.
+                  </p>
                 </div>
+              </div>
 
-                {/* Confirmation checkbox */}
-                <div className="mt-5">
-                  <label className="flex items-start gap-3 cursor-pointer">
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="block">
+                    <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Nome *</span>
                     <input
-                      type="checkbox"
-                      checked={payment.confirmationChecked}
-                      onChange={(e) => setPayment({
-                        confirmationChecked: e.target.checked,
-                        status: e.target.checked ? 'simulado_confirmado' : 'simulado_pendente',
-                      })}
-                      className="mt-0.5 h-5 w-5 rounded border-baby-text/30 text-baby-accent focus:ring-baby-accent"
+                      type="text"
+                      value={form.name}
+                      onChange={handleField('name')}
+                      className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm ${focusRing}`}
+                      placeholder="Seu nome"
                     />
-                    <span className="font-sans text-sm text-baby-text leading-snug">
-                      Confirmo que os dados acima são apenas para simulação e que o pedido será tratado como <strong>PAGO</strong>.
-                    </span>
+                  </label>
+                  <label className="block">
+                    <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Telefone *</span>
+                    <input
+                      type="tel"
+                      value={form.phone}
+                      onChange={handleField('phone')}
+                      className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm ${focusRing}`}
+                      placeholder="(00) 00000-0000"
+                    />
                   </label>
                 </div>
+
+                <label className="block">
+                  <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">E-mail *</span>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={handleField('email')}
+                    className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm ${focusRing}`}
+                    placeholder="voce@email.com"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Observações</span>
+                  <textarea
+                    rows={3}
+                    value={form.message}
+                    onChange={handleField('message')}
+                    className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm resize-y ${focusRing}`}
+                    placeholder="Referência para entrega, presente, instruções especiais..."
+                  />
+                </label>
               </div>
-              {/* end payment */}
-            </div>
+            </section>
 
-            {/* ═══ RIGHT COLUMN — summary ═══ */}
-            <div className="lg:col-span-2">
-              <div className="bg-surface rounded-2xl p-6 shadow-soft sticky top-24">
-                <h2 className="font-serif text-xl text-baby-text mb-4">Resumo</h2>
+            <section className="bg-surface rounded-3xl shadow-soft p-6 sm:p-8">
+              <ShippingSelector />
+            </section>
 
-                <ul className="space-y-3 mb-6">
-                  {items.map((item) => (
-                    <li key={`${item.id}-${item.size}`} className="flex gap-3 font-sans text-sm text-baby-text/70">
-                      <img src={item.product.images[0]} alt="" className="w-12 h-14 rounded-lg object-cover shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-baby-text line-clamp-1">{item.product.name}</p>
-                        <p className="text-baby-text/50">{item.size} &times; {item.qty}</p>
-                      </div>
-                      <p className="font-medium text-baby-accent whitespace-nowrap">
-                        {formatPrice(item.product.price * item.qty)}
+            <section className="bg-surface rounded-3xl shadow-soft p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-11 h-11 rounded-full bg-baby-pink/40 flex items-center justify-center">
+                  <FiCreditCard className="text-baby-accent" size={20} />
+                </div>
+                <div>
+                  <h2 className="font-serif text-xl text-baby-text">Pagamento</h2>
+                  <p className="font-sans text-sm text-baby-text/50">
+                    Escolha como deseja concluir o pagamento.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setPayment({ method: 'pix' })}
+                  className={paymentOptionClass(payment.method === 'pix')}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-0.5 h-4 w-4 rounded-full border ${payment.method === 'pix' ? 'border-baby-accent bg-baby-accent ring-4 ring-baby-accent/15' : 'border-baby-text/25'}`} />
+                    <div>
+                      <p className="font-sans text-sm font-semibold text-baby-text">Pix</p>
+                      <p className="font-sans text-xs text-baby-text/55 mt-1 leading-relaxed">
+                        O QR Code e o código copia e cola aparecem dentro do site logo após criar o pedido.
                       </p>
-                    </li>
-                  ))}
-                </ul>
-
-                <hr className="border-baby-pink mb-4" />
-
-                {/* Subtotal */}
-                <div className="flex justify-between font-sans text-sm text-baby-text/60 mb-2">
-                  <span>Subtotal</span>
-                  <span>{formatPrice(subtotalCents / 100)}</span>
-                </div>
-
-                {/* Shipping line */}
-                <div className="flex justify-between font-sans text-sm text-baby-text/60 mb-2">
-                  <span>Frete</span>
-                  <span>
-                    {shipping.isLoading
-                      ? 'Calculando…'
-                      : shipping.feeCents != null
-                        ? formatPrice(shipping.feeCents / 100)
-                        : '—'}
-                  </span>
-                </div>
-
-                {shipping.etaText && !shipping.isLoading && (
-                  <div className="flex justify-between font-sans text-xs text-baby-text/40 mb-2">
-                    <span>Prazo</span>
-                    <span>{shipping.etaText}</span>
+                    </div>
                   </div>
-                )}
-
-                {/* Payment method */}
-                <div className="flex justify-between font-sans text-xs text-baby-text/40 mb-2">
-                  <span>Pagamento</span>
-                  <span>{payment.method === 'cartao' ? `Cartão ${payment.card?.installments || 1}x` : 'Pix'}</span>
-                </div>
-
-                <hr className="border-baby-pink mb-4 mt-2" />
-
-                <div className="flex justify-between font-sans font-semibold text-baby-text text-base mb-6">
-                  <span>Total</span>
-                  <span className="text-baby-accent">
-                    {formatPrice(suggestedTotalCents / 100)}
-                  </span>
-                </div>
+                </button>
 
                 <button
-                  type="submit"
-                  disabled={!canSubmit || submitting}
-                  className={`${btnPrimary} w-full ${!canSubmit || submitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  type="button"
+                  onClick={() => setPayment({ method: 'cartao' })}
+                  className={paymentOptionClass(payment.method === 'cartao')}
                 >
-                  {submitting ? (
-                    <>
-                      <FiLoader size={18} className="animate-spin" />
-                      Enviando pedido…
-                    </>
-                  ) : (
-                    <>
-                      <FiSend size={18} />
-                      Enviar Pedido
-                    </>
-                  )}
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-0.5 h-4 w-4 rounded-full border ${payment.method === 'cartao' ? 'border-baby-accent bg-baby-accent ring-4 ring-baby-accent/15' : 'border-baby-text/25'}`} />
+                    <div>
+                      <p className="font-sans text-sm font-semibold text-baby-text">Cartão</p>
+                      <p className="font-sans text-xs text-baby-text/55 mt-1 leading-relaxed">
+                        Você será direcionado para a página hospedada do Asaas para concluir o pagamento com segurança.
+                      </p>
+                    </div>
+                  </div>
                 </button>
-                {!canSubmit && (
-                  <p className="font-sans text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
-                    {!shippingValid
-                      ? 'Preencha o endereço e aguarde o cálculo do frete.'
-                      : !payment.confirmationChecked
-                        ? 'Marque a confirmação de pagamento.'
-                        : 'Preencha os dados de pagamento.'}
-                  </p>
-                )}
-
-                <Link to="/carrinho" className={`${btnSecondary} w-full mt-3`}>
-                  <FiChevronLeft size={16} />
-                  Voltar ao Carrinho
-                </Link>
               </div>
+
+              <div className="mt-4 rounded-2xl border border-baby-pink/60 bg-baby-pink/12 p-4">
+                <div className="flex items-start gap-3">
+                  <FiClock className="text-baby-accent mt-0.5 shrink-0" size={16} />
+                  <p className="font-sans text-sm text-baby-text/65 leading-relaxed">
+                    O pedido será criado com status de separação independente do pagamento. O estoque só é baixado quando a gerente confirma o pedido no painel.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex flex-wrap gap-3">
+              <Link to="/carrinho" className={btnSecondary}>
+                <FiChevronLeft size={16} />
+                Voltar ao carrinho
+              </Link>
+              <button type="submit" disabled={!canSubmit || submitting} className={`${btnPrimary} disabled:opacity-50`}>
+                {submitting ? <FiLoader size={18} className="animate-spin" /> : <FiSend size={18} />}
+                {submitting ? 'Criando pedido...' : 'Criar pedido'}
+              </button>
             </div>
-          </div>
-        </form>
+          </form>
+
+          <aside className="space-y-6">
+            <section className="bg-surface rounded-3xl shadow-soft p-6">
+              <h2 className="font-serif text-xl text-baby-text mb-5">Resumo</h2>
+
+              <div className="space-y-3">
+                {items.map((item) => (
+                  <div key={`${item.id}-${item.size}`} className="flex gap-3">
+                    <img
+                      src={item.product.images?.[0]}
+                      alt=""
+                      className="w-16 h-16 rounded-2xl object-cover bg-baby-pink/20"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-sans text-sm font-medium text-baby-text truncate">{item.product.name}</p>
+                      <p className="font-sans text-xs text-baby-text/45 mt-0.5">
+                        Tam. {item.size || 'Único'} · {item.qty}x
+                      </p>
+                      <p className="font-sans text-sm text-baby-accent mt-1">
+                        {formatPrice(item.product.price * item.qty)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 space-y-2 border-t border-baby-pink/40 pt-4">
+                <Row label="Subtotal" value={formatPrice(subtotalCents / 100)} />
+                <Row
+                  label="Frete"
+                  value={shipping.feeCents != null ? formatPrice(shippingCents / 100) : 'Calcular endereço'}
+                />
+                <div className="flex items-center justify-between pt-2 border-t border-baby-pink/40">
+                  <span className="font-sans text-sm font-semibold text-baby-text">Total</span>
+                  <span className="font-sans text-lg font-bold text-baby-accent">
+                    {formatPrice(totalCents / 100)}
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="bg-surface rounded-3xl shadow-soft p-6">
+              <h3 className="font-serif text-lg text-baby-text mb-3">Depois do envio</h3>
+              <ul className="space-y-3 font-sans text-sm text-baby-text/60">
+                <li>Você verá o QR Code Pix ou o link do cartão na próxima tela.</li>
+                <li>Os pedidos ficam disponíveis em “Meus Pedidos” e também em “Minha Conta”.</li>
+                <li>Se a cobrança expirar ou falhar, você poderá gerar uma nova sem criar outro pedido.</li>
+              </ul>
+            </section>
+          </aside>
+        </motion.div>
       </div>
     </section>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="font-sans text-sm text-baby-text/50">{label}</span>
+      <span className="font-sans text-sm text-baby-text">{value}</span>
+    </div>
   );
 }

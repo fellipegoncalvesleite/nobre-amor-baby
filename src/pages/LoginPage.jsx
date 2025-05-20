@@ -104,10 +104,10 @@ export default function LoginPage() {
 
 
   useEffect(() => {
-    if (location.state?.from) {
-      saveReturnPath(location.state.from);
+    if (from) {
+      saveReturnPath(from);
     }
-  }, []); 
+  }, [from]);
 
   const [tab, setTab] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');

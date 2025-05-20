@@ -1,10 +1,9 @@
-import { Routes, Route } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 import Header from './components/Header';
 import Footer from './components/Footer';
-
-/* ── Pages (lazy-ish — they're small enough to bundle) ── */
+import ProtectedRoute from './components/ProtectedRoute';
 import HomePage from './pages/HomePage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import ProductListingPage from './pages/ProductListingPage';
@@ -22,24 +21,19 @@ import AdminOrderDetailPage from './pages/AdminOrderDetailPage';
 import AdminCatalogPage from './pages/AdminCatalogPage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 import MeusPedidosPage from './pages/MeusPedidosPage';
+import MinhaContaPage from './pages/MinhaContaPage';
 import CustomerOrderDetailPage from './pages/CustomerOrderDetailPage';
 import DebugPage from './pages/DebugPage';
 import StaticPage from './pages/StaticPage';
-import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
     <div className="min-h-screen flex flex-col">
-      <Toaster
-        position="top-center"
-        toastOptions={{ duration: 2000 }}
-      />
+      <Toaster position="top-center" toastOptions={{ duration: 2200 }} />
 
-      {/* Skip to main content link */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4
-                   bg-baby-text text-white dark:text-baby-cream px-4 py-2 rounded-lg z-100 font-sans"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-baby-text text-white dark:text-baby-cream px-4 py-2 rounded-lg z-100 font-sans"
       >
         Ir para o conteúdo principal
       </a>
@@ -62,13 +56,19 @@ function App() {
           <Route path="/pedido-enviado" element={<OrderSuccessPage />} />
           <Route path="/meus-pedidos" element={<MeusPedidosPage />} />
           <Route path="/meus-pedidos/:orderCode" element={<CustomerOrderDetailPage />} />
+          <Route path="/minha-conta" element={<ProtectedRoute><MinhaContaPage /></ProtectedRoute>} />
           <Route path="/entrar" element={<LoginPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
+
           <Route path="/admin" element={<ProtectedRoute role="manager"><AdminDashboardPage /></ProtectedRoute>} />
           <Route path="/admin/pedidos" element={<ProtectedRoute role="manager"><AdminOrdersPage /></ProtectedRoute>} />
           <Route path="/admin/pedidos/:orderCode" element={<ProtectedRoute role="manager"><AdminOrderDetailPage /></ProtectedRoute>} />
           <Route path="/admin/catalogo" element={<ProtectedRoute role="manager"><AdminCatalogPage /></ProtectedRoute>} />
+          <Route path="/admin/produtos" element={<Navigate to="/admin/catalogo?tab=produtos" replace />} />
+          <Route path="/admin/colecoes-gerenciar" element={<Navigate to="/admin/catalogo?tab=colecoes" replace />} />
+          <Route path="/admin/inicio" element={<Navigate to="/admin/catalogo?tab=inicio" replace />} />
+
           <Route path="/debug" element={<ProtectedRoute role="debug"><DebugPage /></ProtectedRoute>} />
           <Route path="/sobre" element={<StaticPage page="sobre" />} />
           <Route path="/faq" element={<StaticPage page="faq" />} />
@@ -76,7 +76,6 @@ function App() {
           <Route path="/envio-e-trocas" element={<StaticPage page="envio-e-trocas" />} />
           <Route path="/privacidade" element={<StaticPage page="privacidade" />} />
           <Route path="/termos" element={<StaticPage page="termos" />} />
-          {/* 404 fallback */}
           <Route path="*" element={<StaticPage page="404" />} />
         </Routes>
       </main>

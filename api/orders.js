@@ -1,35 +1,22 @@
 /**
- * POST /api/orders — create a new order in Supabase.
+ * POST /api/orders — create a new order in Supabase + Asaas.
  *
- * Public endpoint (no admin key), called from the checkout flow.
- *
- * Env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *
- * Request body (JSON):
- *   {
- *     customer: { name, phone, email, message? },
- *     address:  { cep, street, number, complement?, neighborhood, city, uf },
- *     shipping: { feeCents, etaText, provider? },
- *     payment:  { method, paidTotalCents?, ref? },
- *     items:    [{ productId, productName, size, qty, unitPriceCents }],
- *   }
- *
- * Response 201: { orderId, orderCode, status: "new" }
- * Errors:  400 / 405 / 500 — always JSON
+ * Response 201:
+ * {
+ *   orderId,
+ *   orderCode,
+ *   status: "new",
+ *   payment: { provider, method, state, url, copyPaste, qrCode, expiresAt, paidAt, externalId, lastEvent }
+ * }
  */
-
-/* eslint-disable no-undef */
-import { createClient } from '@supabase/supabase-js';
-import { verifyUser } from './_supabaseAdmin.js';
-
-/* ── helpers ─────────────────────────────────────────── */
+import { getSupabase, verifyUser } from './_supabaseAdmin.js';
+import { createAsaasOrderPayment, getRequestBaseUrl } from './_asaas.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   return res.status(status).json(body);
 }
 
-/** Generate order code: NA-YYYYMMDD-XXXXXX (timestamp + random) */
 function generateOrderCode() {
   const now = new Date();
   const pad = (n, l = 2) => String(n).padStart(l, '0');
@@ -38,8 +25,37 @@ function generateOrderCode() {
   return `NA-${date}-${rand}`;
 }
 
+async function generateUniqueOrderCode(supabase) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const orderCode = generateOrderCode();
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('order_code', orderCode)
+      .maybeSingle();
+    if (!existing) return orderCode;
+  }
+
+  throw new Error('Não foi possível gerar um código de pedido único.');
+}
+
+function buildPaymentFailure(method, message) {
+  return {
+    provider: 'asaas',
+    method,
+    state: 'failed',
+    url: null,
+    copyPaste: null,
+    qrCode: null,
+    expiresAt: null,
+    paidAt: null,
+    externalId: null,
+    lastEvent: 'PAYMENT_CREATION_FAILED',
+    message,
+  };
+}
+
 export default async function handler(req, res) {
-  /* ── CORS ──────────────────────────────────────── */
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -50,141 +66,167 @@ export default async function handler(req, res) {
   }
 
   try {
-    /* ── env ──────────────────────────────────────── */
-    const sbUrl = process.env.SUPABASE_URL;
-    const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!sbUrl || !sbKey) {
-      console.error('[orders] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-      return json(res, 500, { error: 'missing_env', message: 'Database not configured.' });
-    }
-
-    const supabase = createClient(sbUrl, sbKey);
-
-    /* ── validate body ───────────────────────────── */
+    const supabase = getSupabase();
     const body = req.body || {};
     const { customer, address: addr, shipping, payment, items } = body;
 
-    if (!customer || !customer.name) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.name is required.' });
+    if (!customer?.name?.trim()) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.name é obrigatório.' });
+    }
+    if (!customer?.email?.trim()) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.email é obrigatório.' });
+    }
+    if (!customer?.phone?.trim()) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.phone é obrigatório.' });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return json(res, 400, { error: 'invalid_request', message: 'items array is required and must not be empty.' });
+      return json(res, 400, { error: 'invalid_request', message: 'items é obrigatório e não pode estar vazio.' });
     }
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (!it.qty || it.qty < 1) {
-        return json(res, 400, { error: 'invalid_request', message: `items[${i}].qty must be >= 1.` });
+    if (!['pix', 'cartao'].includes(payment?.method)) {
+      return json(res, 400, { error: 'invalid_request', message: 'payment.method deve ser "pix" ou "cartao".' });
+    }
+
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (!item?.productName && !item?.name) {
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].productName é obrigatório.` });
       }
-      if (it.unitPriceCents == null || it.unitPriceCents < 0) {
-        return json(res, 400, { error: 'invalid_request', message: `items[${i}].unitPriceCents is required.` });
+      if (Number(item?.qty) < 1) {
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].qty deve ser >= 1.` });
+      }
+      if (item?.unitPriceCents == null || Number(item.unitPriceCents) < 0) {
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].unitPriceCents é obrigatório.` });
       }
     }
 
-    /* ── compute totals server-side ──────────────── */
     const subtotalCents = items.reduce(
-      (sum, it) => sum + Math.round(Number(it.unitPriceCents)) * Math.max(1, Number(it.qty)),
+      (sum, item) => sum + Math.round(Number(item.unitPriceCents)) * Math.max(1, Number(item.qty)),
       0,
     );
     const shippingFeeCents = Number(shipping?.feeCents) || 0;
     const totalCents = subtotalCents + shippingFeeCents;
 
-    /* ── generate unique order code (retry on collision) ── */
-    let orderCode;
-    let collision = true;
-    for (let attempt = 0; attempt < 5 && collision; attempt++) {
-      orderCode = generateOrderCode();
-      const { data: existing } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('order_code', orderCode)
-        .maybeSingle();
-      if (!existing) collision = false;
-    }
-    if (collision) {
-      return json(res, 500, { error: 'code_collision', message: 'Could not generate unique order code.' });
-    }
-
-    /* ── insert order ────────────────────────────── */
-    // If the user is authenticated, link order to their user_id
     let userId = null;
     try {
-      const { user: authUser } = await verifyUser(req);
-      if (authUser) userId = authUser.id;
-    } catch { /* no token or invalid — ok */ }
+      const { user } = await verifyUser(req);
+      if (user) userId = user.id;
+    } catch {
+      userId = null;
+    }
 
-    const orderRow = {
-      order_code:           orderCode,
-      status:               'new',
-      customer_name:        customer.name || null,
-      customer_phone:       customer.phone || null,
-      customer_email:       customer.email || null,
-      customer_message:     customer.message || null,
-      address_cep:          addr?.cep || null,
-      address_street:       addr?.street || null,
-      address_number:       addr?.number || null,
-      address_complement:   addr?.complement || null,
+    const orderCode = await generateUniqueOrderCode(supabase);
+    const orderInsert = {
+      order_code: orderCode,
+      status: 'new',
+      customer_name: customer.name.trim(),
+      customer_phone: customer.phone.trim(),
+      customer_email: customer.email.trim(),
+      customer_message: customer.message?.trim() || null,
+      address_cep: addr?.cep || null,
+      address_street: addr?.street || null,
+      address_number: addr?.number || null,
+      address_complement: addr?.complement || null,
       address_neighborhood: addr?.neighborhood || null,
-      address_city:         addr?.city || null,
-      address_uf:           addr?.uf || null,
-      shipping_fee_cents:   shippingFeeCents,
-      shipping_eta_text:    shipping?.etaText || null,
-      shipping_provider:    shipping?.provider || shipping?.source || null,
-      subtotal_cents:       subtotalCents,
-      total_cents:          totalCents,
-      paid_total_cents:     payment?.paidTotalCents ?? null,
-      payment_method:       payment?.method || null,
-      payment_ref:          payment?.ref || payment?.pixId || null,
+      address_city: addr?.city || null,
+      address_uf: addr?.uf || null,
+      shipping_fee_cents: shippingFeeCents,
+      shipping_eta_text: shipping?.etaText || null,
+      shipping_provider: shipping?.provider || shipping?.source || null,
+      subtotal_cents: subtotalCents,
+      total_cents: totalCents,
+      payment_method: payment.method,
+      payment_state: 'pending',
+      payment_provider: 'asaas',
       ...(userId ? { user_id: userId } : {}),
     };
 
     const { data: order, error: orderErr } = await supabase
       .from('orders')
-      .insert(orderRow)
-      .select('id, order_code')
+      .insert(orderInsert)
+      .select('*')
       .single();
 
-    if (orderErr) {
+    if (orderErr || !order) {
       console.error('[orders] insert order error:', orderErr);
       return json(res, 500, {
         error: 'db_error',
-        message: 'Failed to create order.',
-        detail: orderErr.message || String(orderErr),
-        hint: orderErr.hint || null,
-        code: orderErr.code || null,
+        message: 'Falha ao criar pedido.',
+        detail: orderErr?.message || null,
       });
     }
 
-    /* ── insert items ────────────────────────────── */
-    const itemRows = items.map((it) => ({
-      order_id:         order.id,
-      product_id:       String(it.productId ?? it.id ?? ''),
-      product_name:     it.productName ?? it.name ?? '',
-      size:             it.size || '',
-      qty:              Math.max(1, Number(it.qty)),
-      unit_price_cents: Math.round(Number(it.unitPriceCents)),
-      line_total_cents: Math.round(Number(it.unitPriceCents)) * Math.max(1, Number(it.qty)),
+    const itemRows = items.map((item) => ({
+      order_id: order.id,
+      product_id: String(item.productId ?? item.id ?? ''),
+      product_name: item.productName ?? item.name ?? '',
+      size: item.size || '',
+      qty: Math.max(1, Number(item.qty)),
+      unit_price_cents: Math.round(Number(item.unitPriceCents)),
+      line_total_cents: Math.round(Number(item.unitPriceCents)) * Math.max(1, Number(item.qty)),
     }));
 
     const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
     if (itemsErr) {
       console.error('[orders] insert items error:', itemsErr);
-      // Order was created but items failed — return warning
+      await supabase.from('orders').delete().eq('id', order.id);
+      return json(res, 500, {
+        error: 'db_error',
+        message: 'Falha ao registrar os itens do pedido.',
+        detail: itemsErr.message || null,
+      });
+    }
+
+    try {
+      const paymentResult = await createAsaasOrderPayment({
+        order,
+        items: itemRows,
+        paymentMethod: payment.method,
+        requestBaseUrl: getRequestBaseUrl(req),
+      });
+
+      const { error: paymentUpdateErr } = await supabase
+        .from('orders')
+        .update(paymentResult.orderUpdate)
+        .eq('id', order.id);
+
+      if (paymentUpdateErr) {
+        console.error('[orders] payment sync error:', paymentUpdateErr);
+        return json(res, 500, {
+          error: 'payment_sync_error',
+          message: 'Pedido criado, mas a cobrança não pôde ser sincronizada.',
+          orderId: order.id,
+          orderCode: order.order_code,
+        });
+      }
+
       return json(res, 201, {
         orderId: order.id,
         orderCode: order.order_code,
         status: 'new',
-        warning: 'Order created but items failed: ' + (itemsErr.message || String(itemsErr)),
+        payment: paymentResult.payload,
+      });
+    } catch (paymentErr) {
+      console.error('[orders] payment creation error:', paymentErr);
+      const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobrança.');
+
+      await supabase
+        .from('orders')
+        .update({
+          payment_method: payment.method,
+          payment_provider: 'asaas',
+          payment_state: 'failed',
+          payment_last_event: failedPayment.lastEvent,
+        })
+        .eq('id', order.id);
+
+      return json(res, 201, {
+        orderId: order.id,
+        orderCode: order.order_code,
+        status: 'new',
+        payment: failedPayment,
+        warning: 'Pedido criado, mas a cobrança falhou. Gere uma nova tentativa na área do pedido.',
       });
     }
-
-    console.log('[orders] created %s (id=%s, items=%d, total=%d)',
-      orderCode, order.id, itemRows.length, totalCents);
-
-    return json(res, 201, {
-      orderId: order.id,
-      orderCode: order.order_code,
-      status: 'new',
-    });
   } catch (err) {
     console.error('[orders] unhandled:', err);
     return json(res, 500, { error: 'internal_error', message: 'Erro interno ao criar pedido.' });
