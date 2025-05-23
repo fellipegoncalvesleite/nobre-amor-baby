@@ -101,7 +101,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from ?? '/';
-
+  const buyIntent = ['/checkout', '/carrinho'].some((p) => from.startsWith(p));
 
   useEffect(() => {
     if (from) {
@@ -109,7 +109,7 @@ export default function LoginPage() {
     }
   }, [from]);
 
-  const [tab, setTab] = useState('login'); // 'login' | 'signup'
+  const [tab, setTab] = useState(buyIntent ? 'signup' : 'login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -307,8 +307,8 @@ export default function LoginPage() {
                   type="submit"
                   disabled={busy || !email.trim() || !password}
                   className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
-                             bg-baby-accent text-white font-sans text-sm font-medium
-                             hover:bg-baby-accent/90 transition-colors disabled:opacity-50 ${focusRing}`}
+                             bg-baby-text text-white font-sans text-sm font-medium
+                             hover:bg-baby-text/85 transition-colors disabled:opacity-50 ${focusRing}`}
                 >
                   {busy ? <FiLoader size={16} className="animate-spin" /> : <FiLock size={16} />}
                   Entrar
@@ -479,8 +479,8 @@ export default function LoginPage() {
                       type="submit"
                       disabled={busy || !name.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !confirmPassword}
                       className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
-                                 bg-baby-accent text-white font-sans text-sm font-medium
-                                 hover:bg-baby-accent/90 transition-colors disabled:opacity-50 ${focusRing}`}
+                                 bg-baby-text text-white font-sans text-sm font-medium
+                                 hover:bg-baby-text/85 transition-colors disabled:opacity-50 ${focusRing}`}
                     >
                       {busy ? <FiLoader size={16} className="animate-spin" /> : <FiUser size={16} />}
                       Criar minha conta
