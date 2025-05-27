@@ -245,11 +245,11 @@ export default function LoginPage() {
         >
           {/* ─── Tabs ────────────────────────────────── */}
           <div className="flex gap-2 bg-baby-text/10 rounded-xl p-1 mb-6">
-            <button type="button" onClick={() => { setTab('login'); setSignupDone(false); }} className={tabCls('login')}>
-              Entrar
-            </button>
             <button type="button" onClick={() => { setTab('signup'); setSignupDone(false); }} className={tabCls('signup')}>
               Criar conta
+            </button>
+            <button type="button" onClick={() => { setTab('login'); setSignupDone(false); }} className={tabCls('login')}>
+              Entrar
             </button>
           </div>
 
