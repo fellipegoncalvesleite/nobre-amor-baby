@@ -157,7 +157,9 @@ export default function MeusPedidosPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-2">
-                          <span className="font-mono text-sm font-bold text-baby-text">{order.order_code}</span>
+                          <span className="inline-flex items-center rounded-full border border-baby-text/10 bg-baby-cream px-2.5 py-1 font-mono text-xs text-baby-text/70">
+                            {order.order_code}
+                          </span>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${fulfillment.color}`}>
                             {fulfillment.customerLabel || fulfillment.label}
                           </span>
@@ -168,7 +170,7 @@ export default function MeusPedidosPage() {
 
                         <div className="flex flex-wrap items-center gap-4 font-sans text-xs text-baby-text/50">
                           <span>{formatDate(order.created_at)}</span>
-                          <span className="font-medium text-baby-accent">{formatPrice((order.total_cents || 0) / 100)}</span>
+                          <span className="font-medium text-baby-text/70">{formatPrice((order.total_cents || 0) / 100)}</span>
                           {order.items_count != null && <span>{order.items_count} ite{order.items_count !== 1 ? 'ns' : 'm'}</span>}
                         </div>
                       </div>

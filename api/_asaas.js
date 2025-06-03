@@ -6,12 +6,24 @@ function trimToNull(value) {
   return text ? text : null;
 }
 
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
 export function centsToCurrency(cents) {
   return Number((Number(cents || 0) / 100).toFixed(2));
 }
 
 export function normalizePhone(phone) {
-  return String(phone || '').replace(/\D/g, '').slice(0, 13);
+  return digitsOnly(phone).slice(0, 13);
+}
+
+export function normalizeCpfCnpj(value) {
+  return digitsOnly(value).slice(0, 14);
+}
+
+export function normalizePostalCode(value) {
+  return digitsOnly(value).slice(0, 8);
 }
 
 export function normalizePaymentMethod(method) {
@@ -172,6 +184,7 @@ export async function createAsaasCustomer(customer) {
     name: trimToNull(customer.name),
     email: trimToNull(customer.email),
     mobilePhone: normalizePhone(customer.phone),
+    cpfCnpj: normalizeCpfCnpj(customer.cpfCnpj),
   };
 
   return asaasRequest('/customers', {
@@ -185,12 +198,21 @@ export async function createAsaasOrderPayment({
   items,
   paymentMethod,
   requestBaseUrl,
+  requestIp,
+  card,
+  customerDocument,
 }) {
   const method = normalizePaymentMethod(paymentMethod || order.payment_method);
+  const cpfCnpj = normalizeCpfCnpj(customerDocument || order.customer_cpf_cnpj);
+  if (!cpfCnpj) {
+    throw new Error('CPF ou CNPJ do cliente e obrigatorio para criar a cobranca.');
+  }
+
   const customer = await createAsaasCustomer({
     name: order.customer_name,
     email: order.customer_email,
     phone: order.customer_phone,
+    cpfCnpj,
   });
 
   const callback = getCallbackConfig({
@@ -199,17 +221,44 @@ export async function createAsaasOrderPayment({
     orderCode: order.order_code,
   });
 
+  const paymentBody = {
+    customer: customer.id,
+    billingType: method === 'pix' ? 'PIX' : 'CREDIT_CARD',
+    value: centsToCurrency(order.total_cents),
+    dueDate: formatAsaasDate(),
+    description: buildPaymentDescription(order, items),
+    externalReference: order.order_code,
+    ...(callback ? { callback } : {}),
+  };
+
+  if (method === 'cartao') {
+    if (!card) {
+      throw new Error('Dados do cartão são obrigatórios para pagamento com cartão.');
+    }
+
+    paymentBody.creditCard = {
+      holderName: trimToNull(card.holderName),
+      number: digitsOnly(card.number),
+      expiryMonth: String(card.expiryMonth || '').padStart(2, '0'),
+      expiryYear: String(card.expiryYear || ''),
+      ccv: digitsOnly(card.ccv),
+    };
+    paymentBody.creditCardHolderInfo = {
+      name: trimToNull(order.customer_name),
+      email: trimToNull(order.customer_email),
+      cpfCnpj,
+      postalCode: normalizePostalCode(order.address_cep),
+      addressNumber: trimToNull(order.address_number),
+      addressComplement: trimToNull(order.address_complement),
+      phone: normalizePhone(order.customer_phone),
+      mobilePhone: normalizePhone(order.customer_phone),
+    };
+    paymentBody.remoteIp = trimToNull(requestIp) || '127.0.0.1';
+  }
+
   const payment = await asaasRequest('/payments', {
     method: 'POST',
-    body: {
-      customer: customer.id,
-      billingType: method === 'pix' ? 'PIX' : 'CREDIT_CARD',
-      value: centsToCurrency(order.total_cents),
-      dueDate: formatAsaasDate(),
-      description: buildPaymentDescription(order, items),
-      externalReference: order.order_code,
-      ...(callback ? { callback } : {}),
-    },
+    body: paymentBody,
   });
 
   let pixQrCode = null;
@@ -265,4 +314,13 @@ export function getRequestBaseUrl(req) {
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   if (!host) return null;
   return `${proto}://${host}`;
+}
+
+export function getRequestIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0]?.trim();
+  const realIp = trimToNull(req.headers['x-real-ip']);
+  const socketIp = trimToNull(req.socket?.remoteAddress);
+  const candidate = forwarded || realIp || socketIp;
+  if (!candidate) return null;
+  return candidate.replace(/^::ffff:/, '');
 }

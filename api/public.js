@@ -327,6 +327,19 @@ async function handleRetryPayment(req, res, supabase) {
     return json(res, 400, { error: 'payment_not_retryable', message: 'Este pedido ainda não pode gerar uma nova cobrança.' });
   }
 
+  if ((method || order.payment_method) === 'cartao') {
+    return json(res, 400, {
+      error: 'card_retry_requires_new_checkout',
+      message: 'Para tentar novamente com cartao, use "Pedir de novo" e informe o cartao novamente.',
+    });
+  }
+  if (!order.customer_cpf_cnpj) {
+    return json(res, 400, {
+      error: 'missing_customer_document',
+      message: 'Este pedido precisa ser refeito para informar o CPF ou CNPJ novamente.',
+    });
+  }
+
   const { data: items, error: itemsErr } = await supabase
     .from('order_items')
     .select('id, product_id, product_name, size, qty, unit_price_cents, line_total_cents')
