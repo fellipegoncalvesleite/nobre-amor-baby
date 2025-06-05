@@ -117,7 +117,7 @@ export default function Footer() {
               <img
                 src="/logo.svg"
                 alt="Nobre Amor Baby"
-                className="h-16 w-16 sm:h-[4.5rem] sm:w-[4.5rem] object-contain"
+                className="h-20 w-20 sm:h-24 sm:w-24 object-contain"
                 draggable={false}
               />
             </div>

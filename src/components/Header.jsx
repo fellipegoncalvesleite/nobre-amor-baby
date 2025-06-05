@@ -117,7 +117,7 @@ export default function Header() {
               <img
                 src="/logo.svg"
                 alt="Nobre Amor Baby"
-                className="h-12 w-12 md:h-[3.5rem] md:w-[3.5rem] object-contain"
+                className="h-14 w-14 md:h-16 md:w-16 object-contain"
                 draggable={false}
                 onError={(e) => {
                   e.target.style.display = 'none';
