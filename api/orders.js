@@ -1,0 +1,278 @@
+/**
+ * POST /api/orders - create a new order in Supabase + Asaas.
+ *
+ * Response 201:
+ * {
+ *   orderId,
+ *   orderCode,
+ *   status: "new",
+ *   payment: { provider, method, state, url, copyPaste, qrCode, expiresAt, paidAt, externalId, lastEvent }
+ * }
+ */
+import { getSupabase, verifyUser } from './_supabaseAdmin.js';
+import {
+  createAsaasOrderPayment,
+  getRequestBaseUrl,
+  getRequestIp,
+  normalizeCpfCnpj,
+} from './_asaas.js';
+
+function json(res, status, body) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  return res.status(status).json(body);
+}
+
+function generateOrderCode() {
+  const now = new Date();
+  const pad = (n, l = 2) => String(n).padStart(l, '0');
+  const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  const rand = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+  return `NA-${date}-${rand}`;
+}
+
+async function generateUniqueOrderCode(supabase) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const orderCode = generateOrderCode();
+    const { data: existing } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('order_code', orderCode)
+      .maybeSingle();
+    if (!existing) return orderCode;
+  }
+
+  throw new Error('Nao foi possivel gerar um codigo de pedido unico.');
+}
+
+function buildPaymentFailure(method, message) {
+  return {
+    provider: 'asaas',
+    method,
+    state: 'failed',
+    url: null,
+    copyPaste: null,
+    qrCode: null,
+    expiresAt: null,
+    paidAt: null,
+    externalId: null,
+    lastEvent: 'PAYMENT_CREATION_FAILED',
+    message,
+  };
+}
+
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeExpiryYear(value) {
+  const digits = digitsOnly(value);
+  if (digits.length === 2) return `20${digits}`;
+  return digits.slice(0, 4);
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+
+  if (req.method !== 'POST') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
+  }
+
+  try {
+    const supabase = getSupabase();
+    const body = req.body || {};
+    const { customer, address: addr, shipping, payment, items } = body;
+
+    if (!customer?.name?.trim()) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.name e obrigatorio.' });
+    }
+    if (!customer?.email?.trim()) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.email e obrigatorio.' });
+    }
+    if (!customer?.phone?.trim()) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.phone e obrigatorio.' });
+    }
+    if (!normalizeCpfCnpj(customer?.cpfCnpj).match(/^\d{11}$|^\d{14}$/)) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.cpfCnpj e obrigatorio.' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return json(res, 400, { error: 'invalid_request', message: 'items e obrigatorio e nao pode estar vazio.' });
+    }
+    if (!['pix', 'cartao'].includes(payment?.method)) {
+      return json(res, 400, { error: 'invalid_request', message: 'payment.method deve ser "pix" ou "cartao".' });
+    }
+    if (payment?.method === 'cartao') {
+      const card = payment?.card || {};
+      const number = digitsOnly(card.number);
+      const ccv = digitsOnly(card.ccv);
+      const month = digitsOnly(card.expiryMonth);
+      const year = normalizeExpiryYear(card.expiryYear);
+
+      if (!card.holderName?.trim()) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.holderName e obrigatorio.' });
+      }
+      if (number.length < 13 || number.length > 19) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.number e invalido.' });
+      }
+      if (!month.match(/^(0[1-9]|1[0-2])$/)) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.expiryMonth e invalido.' });
+      }
+      if (!year.match(/^\d{4}$/)) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.expiryYear e invalido.' });
+      }
+      if (ccv.length < 3 || ccv.length > 4) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.ccv e invalido.' });
+      }
+    }
+
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (!item?.productName && !item?.name) {
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].productName e obrigatorio.` });
+      }
+      if (Number(item?.qty) < 1) {
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].qty deve ser >= 1.` });
+      }
+      if (item?.unitPriceCents == null || Number(item.unitPriceCents) < 0) {
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].unitPriceCents e obrigatorio.` });
+      }
+    }
+
+    const subtotalCents = items.reduce(
+      (sum, item) => sum + Math.round(Number(item.unitPriceCents)) * Math.max(1, Number(item.qty)),
+      0,
+    );
+    const shippingFeeCents = Number(shipping?.feeCents) || 0;
+    const totalCents = subtotalCents + shippingFeeCents;
+
+    let userId = null;
+    try {
+      const { user } = await verifyUser(req);
+      if (user) userId = user.id;
+    } catch {
+      userId = null;
+    }
+
+    const orderCode = await generateUniqueOrderCode(supabase);
+    const orderInsert = {
+      order_code: orderCode,
+      status: 'new',
+      customer_name: customer.name.trim(),
+      customer_phone: customer.phone.trim(),
+      customer_email: customer.email.trim(),
+      customer_message: customer.message?.trim() || null,
+      address_cep: addr?.cep || null,
+      address_street: addr?.street || null,
+      address_number: addr?.number || null,
+      address_complement: addr?.complement || null,
+      address_neighborhood: addr?.neighborhood || null,
+      address_city: addr?.city || null,
+      address_uf: addr?.uf || null,
+      shipping_fee_cents: shippingFeeCents,
+      shipping_eta_text: shipping?.etaText || null,
+      shipping_provider: shipping?.provider || shipping?.source || null,
+      subtotal_cents: subtotalCents,
+      total_cents: totalCents,
+      payment_method: payment.method,
+      payment_state: 'pending',
+      payment_provider: 'asaas',
+      ...(userId ? { user_id: userId } : {}),
+    };
+
+    const { data: order, error: orderErr } = await supabase
+      .from('orders')
+      .insert(orderInsert)
+      .select('*')
+      .single();
+
+    if (orderErr || !order) {
+      console.error('[orders] insert order error:', orderErr);
+      return json(res, 500, {
+        error: 'db_error',
+        message: 'Falha ao criar pedido.',
+        detail: orderErr?.message || null,
+      });
+    }
+
+    const itemRows = items.map((item) => ({
+      order_id: order.id,
+      product_id: String(item.productId ?? item.id ?? ''),
+      product_name: item.productName ?? item.name ?? '',
+      size: item.size || '',
+      qty: Math.max(1, Number(item.qty)),
+      unit_price_cents: Math.round(Number(item.unitPriceCents)),
+      line_total_cents: Math.round(Number(item.unitPriceCents)) * Math.max(1, Number(item.qty)),
+    }));
+
+    const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
+    if (itemsErr) {
+      console.error('[orders] insert items error:', itemsErr);
+      await supabase.from('orders').delete().eq('id', order.id);
+      return json(res, 500, {
+        error: 'db_error',
+        message: 'Falha ao registrar os itens do pedido.',
+        detail: itemsErr.message || null,
+      });
+    }
+
+    try {
+      const paymentResult = await createAsaasOrderPayment({
+        order,
+        items: itemRows,
+        paymentMethod: payment.method,
+        requestBaseUrl: getRequestBaseUrl(req),
+        requestIp: getRequestIp(req),
+        card: payment.method === 'cartao' ? payment.card : null,
+        customerDocument: normalizeCpfCnpj(customer.cpfCnpj),
+      });
+
+      const { error: paymentUpdateErr } = await supabase
+        .from('orders')
+        .update(paymentResult.orderUpdate)
+        .eq('id', order.id);
+
+      if (paymentUpdateErr) {
+        console.error('[orders] payment sync error:', paymentUpdateErr);
+        return json(res, 500, {
+          error: 'payment_sync_error',
+          message: 'Pedido criado, mas a cobranca nao pode ser sincronizada.',
+          orderId: order.id,
+          orderCode: order.order_code,
+        });
+      }
+
+      return json(res, 201, {
+        orderId: order.id,
+        orderCode: order.order_code,
+        status: 'new',
+        payment: paymentResult.payload,
+      });
+    } catch (paymentErr) {
+      console.error('[orders] payment creation error:', paymentErr);
+      const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobranca.');
+
+      await supabase
+        .from('orders')
+        .update({
+          payment_method: payment.method,
+          payment_provider: 'asaas',
+          payment_state: 'failed',
+          payment_last_event: failedPayment.lastEvent,
+        })
+        .eq('id', order.id);
+
+      return json(res, 201, {
+        orderId: order.id,
+        orderCode: order.order_code,
+        status: 'new',
+        payment: failedPayment,
+        warning: 'Pedido criado, mas a cobranca falhou. Refaça a compra em Meus Pedidos.',
+      });
+    }
+  } catch (err) {
+    console.error('[orders] unhandled:', err);
+    return json(res, 500, { error: 'internal_error', message: 'Erro interno ao criar pedido.' });
+  }
+}
