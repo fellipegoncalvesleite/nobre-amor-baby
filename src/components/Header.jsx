@@ -30,9 +30,10 @@ const navLinks = [
 ];
 
 const linkBase =
-  'px-3 py-2 min-h-11 flex items-center text-baby-text/80 hover:text-baby-text font-sans text-sm tracking-wide rounded-lg transition-colors hover:bg-baby-pink/40 active:bg-baby-pink/60 focus:outline-none focus:ring-2 focus:ring-baby-accent';
+  'relative px-3 lg:px-4 py-2 min-h-11 flex items-center text-baby-text/75 hover:text-baby-text font-sans text-[15px] font-medium tracking-wide rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-accent';
 
-const linkActive = 'text-baby-accent font-semibold';
+const linkActive =
+  'text-baby-text font-semibold after:content-[""] after:absolute after:left-3 after:right-3 lg:after:left-4 lg:after:right-4 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-baby-accent';
 
 export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -94,12 +95,12 @@ export default function Header() {
         animate={{ y: 0 }}
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
           isScrolled
-            ? 'bg-surface/95 backdrop-blur-md shadow-soft'
-            : 'bg-baby-cream'
+            ? 'bg-surface/95 backdrop-blur-md shadow-soft border-b border-baby-pink/50'
+            : 'bg-surface/85 backdrop-blur-md border-b border-baby-pink/30'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 md:h-24 gap-2">
+          <div className="flex items-center justify-between h-16 md:h-20 gap-2 md:gap-4">
             {/* Mobile hamburger */}
             <button
               type="button"
@@ -112,23 +113,23 @@ export default function Header() {
               {isMobileMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
             </button>
 
-            {/* Logo */}
-            <Link to="/" className="flex items-center gap-3 rounded-lg select-none group" aria-label="Ir para a página inicial">
+            {/* Logo — single brand lockup (image already contains the wordmark) */}
+            <Link
+              to="/"
+              className="flex items-center rounded-lg select-none group focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-accent"
+              aria-label="Nobre Amor Baby — página inicial"
+            >
               <img
                 src="/logo.svg"
-                alt=""
-                aria-hidden="true"
-                className="h-14 md:h-20 lg:h-24 w-auto object-contain transition-transform group-hover:scale-[1.03]"
+                alt="Nobre Amor Baby"
+                className="h-12 md:h-16 w-auto object-contain transition-transform group-hover:scale-[1.03]"
                 draggable={false}
               />
-              <span className="font-serif text-lg md:text-xl lg:text-2xl leading-tight text-baby-text font-medium tracking-wide hidden sm:inline-block">
-                Nobre Amor <span className="text-baby-accent">Baby</span>
-              </span>
             </Link>
 
             {/* Desktop nav */}
             <nav
-              className="hidden md:flex items-center gap-1 lg:gap-2"
+              className="hidden md:flex items-center gap-0.5 lg:gap-1"
               aria-label="Navegação principal"
             >
               {navLinks.map((link) => (

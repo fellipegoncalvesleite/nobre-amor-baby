@@ -11,13 +11,15 @@ const containerVariants = {
 };
 
 export default function Products() {
-  const { products } = useCatalog();
+  const { products, isLoading } = useCatalog();
   /* Show up to 8 featured or public products on the home page */
   const featured = useMemo(() => {
     const pub = products.filter((p) => p.is_public !== false);
     const starred = pub.filter((p) => p.featured);
     return (starred.length >= 4 ? starred : pub).slice(0, 8);
   }, [products]);
+
+  if (!isLoading && featured.length === 0) return null;
 
   return (
     <section id="produtos" className="py-20 lg:py-28 bg-baby-cream" aria-label="Produtos em destaque">
@@ -50,17 +52,38 @@ export default function Products() {
         </motion.div>
 
         {/* Product grid */}
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.1 }}
-          className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-6"
-        >
-          {featured.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </motion.div>
+        {isLoading ? (
+          <div
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-6"
+            aria-busy="true"
+            aria-label="Carregando produtos"
+          >
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="bg-surface rounded-2xl overflow-hidden shadow-soft animate-pulse"
+              >
+                <div className="aspect-3/4 w-full bg-baby-pink/30" />
+                <div className="p-4 space-y-2">
+                  <div className="h-4 w-3/4 rounded bg-baby-pink/40" />
+                  <div className="h-3 w-1/2 rounded bg-baby-pink/30" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <motion.div
+            key={`grid-${featured.length}`}
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 lg:gap-6"
+          >
+            {featured.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </motion.div>
+        )}
 
         {/* Bottom CTA */}
         <div className="text-center mt-14">
