@@ -100,7 +100,7 @@ export default function Header() {
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 md:h-20 gap-2 md:gap-4">
+          <div className="flex items-center justify-between h-24 md:h-32 gap-2 md:gap-4">
             {/* Mobile hamburger */}
             <button
               type="button"
@@ -122,7 +122,7 @@ export default function Header() {
               <img
                 src="/logo.svg"
                 alt="Nobre Amor Baby"
-                className="h-12 md:h-16 w-auto object-contain transition-transform group-hover:scale-[1.03]"
+                className="h-24 md:h-32 w-auto object-contain transition-transform group-hover:scale-[1.03]"
                 draggable={false}
               />
             </Link>

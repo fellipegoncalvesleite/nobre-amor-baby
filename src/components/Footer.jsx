@@ -139,23 +139,19 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-10 lg:gap-12">
           <div className="col-span-2 lg:col-span-1">
-            {/* Single brand lockup: logo badge on white for contrast, plus wordmark */}
+            {/* Single brand lockup: the logo already contains the wordmark */}
             <Link
               to="/"
-              className="inline-flex items-center gap-3 mb-5 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-pink rounded-2xl"
+              className="inline-flex items-center mb-5 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-pink rounded-2xl"
               aria-label="Nobre Amor Baby — página inicial"
             >
-              <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-soft">
+              <span className="flex items-center justify-center rounded-3xl bg-white p-3 shadow-soft-lg">
                 <img
                   src="/logo.svg"
-                  alt=""
-                  aria-hidden="true"
-                  className="h-12 w-12 object-contain"
+                  alt="Nobre Amor Baby"
+                  className="h-28 w-28 sm:h-32 sm:w-32 object-contain"
                   draggable={false}
                 />
-              </span>
-              <span className="font-serif text-xl leading-tight text-white">
-                Nobre Amor<br />Baby
               </span>
             </Link>
             <p className="font-sans text-white/80 text-sm mb-2 max-w-xs">
