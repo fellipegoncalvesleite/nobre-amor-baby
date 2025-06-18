@@ -117,6 +117,21 @@ export async function uploadImage(file, kind = 'product') {
   return data.url;
 }
 
+/* ── Newsletter ───────────────────────────────────── */
+
+export async function listNewsletterSubscribers(params = {}) {
+  const qs = new URLSearchParams({ resource: 'newsletter' });
+  if (params.q) qs.set('q', params.q);
+  if (params.source) qs.set('source', params.source);
+  if (params.limit) qs.set('limit', String(params.limit));
+  const data = await request(`/api/admin?${qs}`);
+  return { subscribers: data.subscribers || [], total: data.total ?? 0 };
+}
+
+export async function deleteNewsletterSubscriber(id) {
+  await request(`/api/admin?resource=newsletter&id=${id}`, { method: 'DELETE' });
+}
+
 /* ── Homepage Settings ────────────────────────────── */
 
 export async function getHomeSettings() {

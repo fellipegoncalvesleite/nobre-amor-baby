@@ -32,6 +32,17 @@ import { getSeededCollections } from '../adminSeeds/seedCollections';
 
 /* ── Product normalisation ────────────────────────────── */
 
+/** How long a product keeps the automatic "Novo" tag after creation. */
+const NEW_TAG_WINDOW_DAYS = 30;
+
+function isWithinNewWindow(createdAt) {
+  if (!createdAt) return false;
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return false;
+  const ageMs = Date.now() - created;
+  return ageMs >= 0 && ageMs <= NEW_TAG_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+
 /**
  * Normalise a product from any source (DB row, seed, or legacy format)
  * so both admin (snake_case) and public pages (camelCase) can read it.
@@ -85,7 +96,7 @@ function normalizeProduct(p, collections) {
     sizeOptions,
     sizes,
     category: coll?.slug || p.category_slug || p.category || '',
-    isNew: /novo/i.test(p.tag || ''),
+    isNew: isWithinNewWindow(p.created_at) || /novo/i.test(p.tag || ''),
     isPromo: oldPrice != null && oldPrice > 0,
     weightGrams: p.weight_grams || p.weightGrams || 200,
     packGroup: p.pack_group || p.packGroup || 'roupa',

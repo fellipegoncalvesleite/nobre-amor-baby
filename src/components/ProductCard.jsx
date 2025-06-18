@@ -7,11 +7,13 @@ import { formatPrice, focusRing } from '../lib/ui';
 import { formatAgeRange, formatSizeGroupLabel } from '../utils/sizeFormat';
 
 const tagColors = {
-  'Mais Vendido': 'bg-baby-accent text-white dark:text-baby-cream',
-  'Novo': 'bg-green-600 text-white',
-  'Popular': 'bg-baby-text/80 text-white dark:text-baby-cream',
-  'Esgotado': 'bg-gray-500 text-white',
+  'Mais Vendido': 'bg-baby-text/90 text-white dark:text-baby-cream',
+  'Novo': 'bg-[#624C73] text-white',
+  'Popular': 'bg-baby-accent text-white dark:text-baby-cream',
+  'Esgotado': 'bg-baby-text/50 text-white',
 };
+
+const defaultTagColor = 'bg-baby-accent text-white dark:text-baby-cream';
 
 const itemVariants = {
   hidden: { opacity: 0, y: 40 },
@@ -22,6 +24,10 @@ export default function ProductCard({ product }) {
   const { toggleWishlist, isInWishlist, addToCart } = useStore();
   const wishlisted = isInWishlist(product.id);
   const outOfStock = product.inStock === false;
+
+  /* Effective tag: manual tag takes priority, otherwise auto "Novo" when within
+     the new-product window (computed upstream in CatalogContext). */
+  const effectiveTag = product.tag || (product.isNew ? 'Novo' : null);
 
   const handleFavorite = (e) => {
     e.preventDefault();
@@ -73,20 +79,23 @@ export default function ProductCard({ product }) {
             loading="lazy"
           />
 
-          {/* Tag — "Esgotado" overrides the normal tag */}
-          {(outOfStock || product.tag) && (
-            <span
-              className={`absolute top-3 left-3 px-3 py-1 rounded-full font-sans text-xs font-medium ${outOfStock ? tagColors['Esgotado'] : (tagColors[product.tag] || 'bg-baby-accent text-white dark:text-baby-cream')}`}
-            >
-              {outOfStock ? 'Esgotado' : product.tag}
-            </span>
-          )}
-
-          {/* Old price badge */}
-          {product.oldPrice && (
-            <span className="absolute top-3 right-14 bg-red-500 text-white px-2 py-0.5 rounded-full font-sans text-[11px] font-semibold">
-              {Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)}% OFF
-            </span>
+          {/* Badges — stacked on the left so they never overlap each other
+              or the right-side quick actions on narrow mobile cards. */}
+          {(outOfStock || effectiveTag || (product.oldPrice && !outOfStock)) && (
+            <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5 max-w-[calc(100%-3.75rem)]">
+              {(outOfStock || effectiveTag) && (
+                <span
+                  className={`px-2.5 py-1 rounded-full font-sans text-[11px] sm:text-xs font-medium shadow-soft whitespace-nowrap ${outOfStock ? tagColors['Esgotado'] : (tagColors[effectiveTag] || defaultTagColor)}`}
+                >
+                  {outOfStock ? 'Esgotado' : effectiveTag}
+                </span>
+              )}
+              {product.oldPrice && !outOfStock && (
+                <span className="bg-[#8E5A73] text-white px-2 py-0.5 rounded-full font-sans text-[10px] sm:text-[11px] font-semibold shadow-soft whitespace-nowrap">
+                  {Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)}% OFF
+                </span>
+              )}
+            </div>
           )}
 
           {/* Quick actions */}

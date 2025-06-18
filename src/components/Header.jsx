@@ -113,17 +113,27 @@ export default function Header() {
               {isMobileMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
             </button>
 
-            {/* Logo — single brand lockup (image already contains the wordmark) */}
+            {/* Logo — single brand lockup (image already contains the wordmark).
+                Rendered as a CSS mask so the mark can be tinted to the exact brand purple
+                regardless of what's baked into the underlying raster. */}
             <Link
               to="/"
               className="flex items-center h-full rounded-lg select-none group focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-accent"
               aria-label="Nobre Amor Baby — página inicial"
             >
-              <img
-                src="/logo.svg"
-                alt="Nobre Amor Baby"
-                className="h-20 md:h-32 w-auto object-contain transition-transform group-hover:scale-[1.03]"
-                draggable={false}
+              <span
+                aria-hidden="true"
+                className="block h-20 md:h-32 aspect-[860/680] bg-[#624C73] mt-[2px] md:mt-[4px] transition-transform group-hover:scale-[1.03]"
+                style={{
+                  WebkitMaskImage: 'url(/logo.svg)',
+                  maskImage: 'url(/logo.svg)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                }}
               />
             </Link>
 

@@ -139,20 +139,27 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-10 lg:gap-12">
           <div className="col-span-2 lg:col-span-1">
-            {/* Single brand lockup: the logo already contains the wordmark */}
+            {/* Single brand lockup — rendered as a CSS mask so the mark tints cleanly
+                on the dark footer background, matching the header treatment. */}
             <Link
               to="/"
               className="inline-flex items-center mb-5 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-pink rounded-2xl"
               aria-label="Nobre Amor Baby — página inicial"
             >
-              <span className="flex items-center justify-center rounded-3xl bg-white p-3 shadow-soft-lg">
-                <img
-                  src="/logo.svg"
-                  alt="Nobre Amor Baby"
-                  className="h-28 w-28 sm:h-32 sm:w-32 object-contain"
-                  draggable={false}
-                />
-              </span>
+              <span
+                aria-hidden="true"
+                className="block h-24 sm:h-28 aspect-[860/680] bg-white"
+                style={{
+                  WebkitMaskImage: 'url(/logo.svg)',
+                  maskImage: 'url(/logo.svg)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                }}
+              />
             </Link>
             <p className="font-sans text-white/80 text-sm mb-2 max-w-xs">
               {siteConfig.tagline}

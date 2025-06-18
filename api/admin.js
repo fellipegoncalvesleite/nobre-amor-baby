@@ -86,8 +86,10 @@ export default async function handler(req, res) {
         return await handleHome(req, res, supabase);
       case 'upload':
         return await handleUpload(req, res, supabase);
+      case 'newsletter':
+        return id ? await handleNewsletterDetail(req, res, supabase, id) : await handleNewsletter(req, res, supabase);
       default:
-        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: orders, products, collections, home, upload.' });
+        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: orders, products, collections, home, upload, newsletter.' });
     }
   } catch (err) {
     console.error(`[admin/${resource}] unhandled:`, err);
@@ -676,6 +678,72 @@ async function handleHome(req, res, supabase) {
   }
 
   return json(res, 200, { settings: data });
+}
+
+/* ══════════════════════════════════════════════════
+   NEWSLETTER — list subscribers
+   ══════════════════════════════════════════════════ */
+async function handleNewsletter(req, res, supabase) {
+  if (req.method !== 'GET') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET.' });
+  }
+
+  const { q, source, limit } = req.query;
+
+  let query = supabase
+    .from('newsletter_subscribers')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false });
+
+  if (q) {
+    query = query.ilike('email', `%${q}%`);
+  }
+
+  if (source && source !== 'all') {
+    query = query.eq('source', source);
+  }
+
+  const max = Math.min(parseInt(limit) || 500, 2000);
+  query = query.limit(max);
+
+  const { data, count, error } = await query;
+
+  if (error) {
+    const missing =
+      error.code === '42P01' ||
+      /does not exist|not found.*relation|newsletter_subscribers/i.test(error.message || '');
+    if (missing) {
+      return json(res, 503, {
+        error: 'missing_table',
+        message: 'Tabela newsletter_subscribers não existe no banco.',
+      });
+    }
+    console.error('[admin/newsletter] list error:', error);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao listar inscritos.' });
+  }
+
+  return json(res, 200, { subscribers: data || [], total: count ?? (data?.length || 0) });
+}
+
+/* ══════════════════════════════════════════════════
+   NEWSLETTER — detail (DELETE)
+   ══════════════════════════════════════════════════ */
+async function handleNewsletterDetail(req, res, supabase, id) {
+  if (req.method !== 'DELETE') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use DELETE.' });
+  }
+
+  const { error: delErr } = await supabase
+    .from('newsletter_subscribers')
+    .delete()
+    .eq('id', id);
+
+  if (delErr) {
+    console.error('[admin/newsletter/delete] error:', delErr);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao excluir inscrito.' });
+  }
+
+  return json(res, 200, { deleted: true });
 }
 
 /* ══════════════════════════════════════════════════

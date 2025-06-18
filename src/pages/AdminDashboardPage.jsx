@@ -49,7 +49,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Dashboard cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Pedidos */}
             <Link
               to="/admin/pedidos"
@@ -77,6 +77,21 @@ export default function AdminDashboardPage() {
               </p>
               <p className="font-sans text-sm text-baby-text/50 mt-2 leading-relaxed">
                 Produtos, coleções e configurações da página inicial
+              </p>
+            </Link>
+
+            {/* Newsletter */}
+            <Link
+              to="/admin/newsletter"
+              className={`bg-surface rounded-2xl p-8 shadow-soft hover:ring-2 hover:ring-baby-accent
+                         transition-all group flex flex-col items-center text-center ${focusRing}`}
+            >
+              <span className="text-5xl mb-4">✉️</span>
+              <p className="font-serif text-xl text-baby-text group-hover:text-baby-accent transition-colors">
+                Newsletter
+              </p>
+              <p className="font-sans text-sm text-baby-text/50 mt-2 leading-relaxed">
+                Ver e exportar os inscritos na lista de e-mails
               </p>
             </Link>
           </div>

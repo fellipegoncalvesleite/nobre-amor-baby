@@ -29,12 +29,17 @@ export default function Hero() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.8 }}
-              className="font-serif text-4xl sm:text-5xl lg:text-6xl xl:text-7xl
-                         text-baby-text leading-tight mb-6"
+              className="font-serif text-baby-text leading-[1.05] mb-6"
             >
-              Vista Seu
-              <span className="block text-baby-accent">Pequeno Amor</span>
-              com Carinho
+              <span className="block text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-light text-baby-text/70 tracking-wide">
+                Vista Seu
+              </span>
+              <span className="block italic text-5xl sm:text-6xl lg:text-7xl xl:text-[5.5rem] font-medium text-[#624C73] -mt-1">
+                Pequeno Amor
+              </span>
+              <span className="block text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-light text-baby-text/70 tracking-wide mt-1">
+                com Carinho
+              </span>
             </motion.h1>
 
             <motion.p
