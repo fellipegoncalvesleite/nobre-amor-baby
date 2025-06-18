@@ -6,7 +6,7 @@ export default function Hero() {
   return (
     <section
       className="relative min-h-[90vh] flex items-center bg-linear-to-br
-                 from-baby-cream via-baby-pink-light to-baby-pink pt-28 md:pt-36"
+                 from-baby-cream via-baby-pink-light to-baby-pink pt-28 md:pt-40"
       aria-label="Seção principal"
     >
       {/* Decorative blobs */}

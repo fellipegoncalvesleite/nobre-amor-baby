@@ -100,7 +100,7 @@ export default function Header() {
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-24 md:h-32 gap-2 md:gap-4">
+          <div className="flex items-center justify-between h-24 md:h-36 gap-3 md:gap-6 lg:gap-8">
             {/* Mobile hamburger */}
             <button
               type="button"
@@ -116,13 +116,13 @@ export default function Header() {
             {/* Logo — single brand lockup (image already contains the wordmark) */}
             <Link
               to="/"
-              className="flex items-center rounded-lg select-none group focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-accent"
+              className="flex items-center h-full rounded-lg select-none group focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-accent"
               aria-label="Nobre Amor Baby — página inicial"
             >
               <img
                 src="/logo.svg"
                 alt="Nobre Amor Baby"
-                className="h-24 md:h-32 w-auto object-contain transition-transform group-hover:scale-[1.03]"
+                className="h-20 md:h-32 w-auto object-contain transition-transform group-hover:scale-[1.03]"
                 draggable={false}
               />
             </Link>
