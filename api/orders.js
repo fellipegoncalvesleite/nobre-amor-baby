@@ -162,6 +162,7 @@ export default async function handler(req, res) {
       customer_name: customer.name.trim(),
       customer_phone: customer.phone.trim(),
       customer_email: customer.email.trim(),
+      customer_cpf_cnpj: normalizeCpfCnpj(customer.cpfCnpj),
       customer_message: customer.message?.trim() || null,
       address_cep: addr?.cep || null,
       address_street: addr?.street || null,
@@ -260,6 +261,7 @@ export default async function handler(req, res) {
           payment_provider: 'asaas',
           payment_state: 'failed',
           payment_last_event: failedPayment.lastEvent,
+          payment_error_message: failedPayment.message,
         })
         .eq('id', order.id);
 
@@ -268,7 +270,7 @@ export default async function handler(req, res) {
         orderCode: order.order_code,
         status: 'new',
         payment: failedPayment,
-        warning: 'Pedido criado, mas a cobranca falhou. Refaça a compra em Meus Pedidos.',
+        warning: `Pedido criado, mas a cobranca falhou. ${failedPayment.message || 'Refaça a compra em Meus Pedidos.'}`,
       });
     }
   } catch (err) {

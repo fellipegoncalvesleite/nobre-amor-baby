@@ -19,6 +19,7 @@ export default function AuthCallbackPage() {
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
 
   const returnPath = useMemo(() => getReturnPath(), []);
+  const isTokenVerificationFlow = Boolean(searchParams.get('token_hash') && searchParams.get('type'));
   const effectiveStatus = !authLoading && isAuthed && status === 'processing' ? 'success' : status;
 
   useEffect(() => {
@@ -75,11 +76,9 @@ export default function AuthCallbackPage() {
           setErrorMsg(getSupabaseConfigError().message);
           return;
         }
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          setStatus('error');
-          setErrorMsg(error.message || 'Não foi possível completar a autenticação.');
-        }
+        // The browser client already auto-processes PKCE callback URLs.
+        // Re-exchanging the same code here causes the "code verifier not found" error.
+        return;
       }
     };
 
@@ -131,9 +130,11 @@ export default function AuthCallbackPage() {
             <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full mx-auto flex items-center justify-center">
               <FiCheckCircle size={32} className="text-green-600 dark:text-green-400" />
             </div>
-            <h2 className="font-serif text-xl text-baby-text">E-mail confirmado com sucesso!</h2>
+            <h2 className="font-serif text-xl text-baby-text">
+              {isTokenVerificationFlow ? 'E-mail confirmado com sucesso!' : 'Login concluído com sucesso!'}
+            </h2>
             <p className="font-sans text-sm text-baby-text/60">
-              Sua conta está ativa. Redirecionando em {countdown}s...
+              {isTokenVerificationFlow ? 'Sua conta está ativa.' : 'Sua conta foi conectada.'} Redirecionando em {countdown}s...
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
               <Link

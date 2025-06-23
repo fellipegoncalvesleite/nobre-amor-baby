@@ -3,7 +3,7 @@
  *
  * Roles (from profiles table):
  *   "customer"  — default
- *   "manager"   — admin access  (nobreamorbaby@gmail.com)
+ *   "manager"   — admin access  (nobreamorbaby@gmail.com, nobreamor@gmail.com)
  *   "debug"     — superset of manager (felipezzlx@icloud.com)
  *
  * Exposes:
@@ -118,6 +118,7 @@ export function AuthProvider({ children }) {
       provider,
       options: {
         redirectTo: window.location.origin + '/auth/callback',
+        queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
       },
     });
     if (error) throw error;

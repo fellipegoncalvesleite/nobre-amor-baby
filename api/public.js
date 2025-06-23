@@ -32,7 +32,7 @@ const PUBLIC_ORDER_SELECT = `
   subtotal_cents, total_cents, paid_total_cents,
   payment_method, payment_ref, payment_state, payment_provider,
   payment_external_id, payment_link_url, payment_pix_copy_paste,
-  payment_pix_qr_code, payment_expires_at, paid_at, payment_last_event,
+  payment_pix_qr_code, payment_expires_at, paid_at, payment_last_event, payment_error_message,
   cancel_reason, cancelled_at, rejected_reason, rejected_at, confirmed_at
 `;
 
@@ -364,6 +364,7 @@ async function handleRetryPayment(req, res, supabase) {
       .update({
         ...paymentResult.orderUpdate,
         payment_state: paymentResult.payload.state,
+        payment_error_message: null,
       })
       .eq('id', order.id);
 
@@ -386,6 +387,7 @@ async function handleRetryPayment(req, res, supabase) {
       .update({
         payment_state: 'failed',
         payment_last_event: 'PAYMENT_RETRY_FAILED',
+        payment_error_message: err.message || 'Falha ao gerar nova cobrança.',
       })
       .eq('id', order.id);
 

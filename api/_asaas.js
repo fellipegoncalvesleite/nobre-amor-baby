@@ -156,6 +156,7 @@ export function toPaymentPayload(orderLike = {}) {
     paidAt: orderLike.paid_at || null,
     externalId: orderLike.payment_external_id || null,
     lastEvent: orderLike.payment_last_event || null,
+    message: orderLike.payment_error_message || null,
   };
 }
 
@@ -301,6 +302,7 @@ export async function createAsaasOrderPayment({
       payment_expires_at: payload.expiresAt,
       paid_at: payload.paidAt,
       payment_last_event: payload.lastEvent,
+      payment_error_message: null,
     },
   };
 }

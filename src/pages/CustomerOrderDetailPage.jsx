@@ -375,6 +375,26 @@ export default function CustomerOrderDetailPage() {
                     <p className="font-sans text-sm text-red-700">
                       O pagamento com cartão falhou. Use "Pedir de novo" para refazer a compra e informar o cartão novamente.
                     </p>
+                    {order.payment?.message && (
+                      <p className="font-sans text-sm text-red-700 mt-3">
+                        Motivo: {order.payment.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {order.payment_state === 'failed' && order.payment_method === 'pix' && (
+                <div className="pt-3">
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                    <p className="font-sans text-sm text-red-700">
+                      Não foi possível gerar a cobrança Pix deste pedido.
+                    </p>
+                    {order.payment?.message && (
+                      <p className="font-sans text-sm text-red-700 mt-3">
+                        Motivo: {order.payment.message}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

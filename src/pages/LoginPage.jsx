@@ -14,7 +14,7 @@ import { motion } from 'framer-motion';
 import { FiMail, FiLoader, FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { ensureSupabaseAuthReachable, isSupabaseConfigured } from '../lib/supabaseClient';
 import { focusRing } from '../lib/ui';
 import { saveReturnPath, clearReturnPath } from '../lib/authReturn';
 
@@ -49,6 +49,10 @@ function mapAuthError(err, context = 'login') {
 
   if (err.code === 'SUPABASE_ENV_MISSING' || /placeholder\.supabase\.co|supabase.*not.*configured/i.test(m)) {
     return 'Não foi possível iniciar a autenticação do site. Tente novamente mais tarde.';
+  }
+
+  if (err.code === 'SUPABASE_AUTH_UNREACHABLE') {
+    return 'Não foi possível conectar ao servidor de autenticação do site. Tente novamente mais tarde.';
   }
 
   if (/network|fetch|timeout|aborted/i.test(m)) {
@@ -198,6 +202,7 @@ export default function LoginPage() {
     }
     setBusy(true);
     try {
+      await ensureSupabaseAuthReachable();
       logAuthRequest('signInWithOAuth', provider);
       await signInWithOAuth(provider);
     } catch (err) {

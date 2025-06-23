@@ -30,7 +30,7 @@ begin
     new.id,
     new.email,
     case
-      when lower(new.email) = 'nobreamorbaby@gmail.com' then 'manager'
+      when lower(new.email) in ('nobreamorbaby@gmail.com', 'nobreamor@gmail.com') then 'manager'
       when lower(new.email) = 'felipezzlx@icloud.com'  then 'debug'
       else 'customer'
     end
@@ -53,7 +53,7 @@ create trigger on_auth_user_created
 insert into profiles (id, email, role)
 select u.id, u.email, 'manager'
 from auth.users u
-where lower(u.email) = 'nobreamorbaby@gmail.com'
+where lower(u.email) in ('nobreamorbaby@gmail.com', 'nobreamor@gmail.com')
 on conflict (id) do update set role = 'manager', email = excluded.email;
 
 insert into profiles (id, email, role)
