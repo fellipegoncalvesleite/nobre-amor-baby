@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiAlertCircle, FiCheckCircle, FiLoader, FiPackage, FiShoppingBag } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabaseClient';
+import { getSupabaseConfigError, supabase } from '../lib/supabaseClient';
 import { clearReturnPath, getReturnPath } from '../lib/authReturn';
 
 const TIMEOUT_MS = 15_000;
@@ -51,6 +51,11 @@ export default function AuthCallbackPage() {
       const tokenHash = searchParams.get('token_hash');
       const type = searchParams.get('type');
       if (tokenHash && type) {
+        if (!supabase) {
+          setStatus('error');
+          setErrorMsg(getSupabaseConfigError().message);
+          return;
+        }
         const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
         if (error) {
           setStatus('error');
@@ -65,6 +70,11 @@ export default function AuthCallbackPage() {
 
       const code = searchParams.get('code');
       if (code) {
+        if (!supabase) {
+          setStatus('error');
+          setErrorMsg(getSupabaseConfigError().message);
+          return;
+        }
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
           setStatus('error');

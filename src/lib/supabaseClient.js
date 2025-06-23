@@ -6,25 +6,43 @@
  */
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+const CONFIG_ERROR_CODE = 'SUPABASE_ENV_MISSING';
+const CONFIG_ERROR_MESSAGE = 'Não foi possível iniciar a autenticação do site. Tente novamente mais tarde.';
 
-if (!supabaseUrl || !supabaseAnonKey) {
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+export function getSupabaseConfigError() {
+  const error = new Error(CONFIG_ERROR_MESSAGE);
+  error.name = 'SupabaseConfigError';
+  error.code = CONFIG_ERROR_CODE;
+  error.status = 503;
+  return error;
+}
+
+export function assertSupabaseConfigured() {
+  if (!isSupabaseConfigured) throw getSupabaseConfigError();
+}
+
+if (!isSupabaseConfigured) {
   console.warn(
     '[supabaseClient] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. ' +
-    'Auth features will not work. Set them in .env or Vercel dashboard.',
+    'Auth features are disabled. Set them in .env or the Vercel dashboard.',
   );
 }
 
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder',
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce',
+export const supabase = isSupabaseConfigured
+  ? createClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+      },
     },
-  },
-);
+  )
+  : null;

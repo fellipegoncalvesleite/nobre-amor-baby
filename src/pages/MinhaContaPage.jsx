@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { FiCamera, FiCreditCard, FiLoader, FiLogOut, FiPackage, FiRefreshCw } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabaseClient';
+import { getSupabaseConfigError, supabase } from '../lib/supabaseClient';
 import { btnPrimary, btnSecondary, focusRing, formatPrice } from '../lib/ui';
 import { getPaymentStatus, getFulfillmentStatus } from '../lib/orderStatus';
 import AccountAvatar from '../components/AccountAvatar';
@@ -88,6 +88,10 @@ export default function MinhaContaPage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !accessToken || uploadingAvatar) return;
+    if (!supabase) {
+      toast.error(getSupabaseConfigError().message, { style: toastStyle });
+      return;
+    }
 
     if (!file.type.startsWith('image/')) {
       toast.error('Escolha uma imagem JPG, PNG ou WEBP.', { style: toastStyle });

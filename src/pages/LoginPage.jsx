@@ -14,6 +14,7 @@ import { motion } from 'framer-motion';
 import { FiMail, FiLoader, FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
 import { focusRing } from '../lib/ui';
 import { saveReturnPath, clearReturnPath } from '../lib/authReturn';
 
@@ -44,6 +45,10 @@ function mapAuthError(err, context = 'login') {
 
   if (/password.*weak|password.*short|password.*length/i.test(m)) {
     return 'A senha é muito fraca. Use pelo menos 6 caracteres.';
+  }
+
+  if (err.code === 'SUPABASE_ENV_MISSING' || /placeholder\.supabase\.co|supabase.*not.*configured/i.test(m)) {
+    return 'Não foi possível iniciar a autenticação do site. Tente novamente mais tarde.';
   }
 
   if (/network|fetch|timeout|aborted/i.test(m)) {
@@ -133,6 +138,10 @@ export default function LoginPage() {
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) return;
+    if (!isSupabaseConfigured) {
+      toast.error('Não foi possível iniciar a autenticação do site. Tente novamente mais tarde.', { style: toastStyle });
+      return;
+    }
     setBusy(true);
     try {
       logAuthRequest('signInWithPassword', email.trim());
@@ -152,6 +161,10 @@ export default function LoginPage() {
   const handleSignup = async (e) => {
     e.preventDefault();
     if (!name.trim() || !lastName.trim() || !email.trim() || !password || !confirmPassword) return;
+    if (!isSupabaseConfigured) {
+      toast.error('Não foi possível iniciar a autenticação do site. Tente novamente mais tarde.', { style: toastStyle });
+      return;
+    }
     if (password.length < 6) {
       toast.error('A senha deve ter pelo menos 6 caracteres.', { style: toastStyle });
       return;
@@ -179,6 +192,10 @@ export default function LoginPage() {
 
   /* ── OAuth ─────────────────────────────────────── */
   const handleOAuth = async (provider) => {
+    if (!isSupabaseConfigured) {
+      toast.error('Não foi possível iniciar a autenticação do site. Tente novamente mais tarde.', { style: toastStyle });
+      return;
+    }
     setBusy(true);
     try {
       logAuthRequest('signInWithOAuth', provider);
@@ -253,6 +270,12 @@ export default function LoginPage() {
             </button>
           </div>
 
+          {!isSupabaseConfigured && (
+            <div className="mb-6 rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm font-sans text-amber-900">
+              Login e cadastro estão indisponíveis nesta configuração do site.
+            </div>
+          )}
+
           {/* ═══════════════ LOGIN TAB ═══════════════ */}
           {tab === 'login' && (
             <>
@@ -305,7 +328,7 @@ export default function LoginPage() {
 
                 <button
                   type="submit"
-                  disabled={busy || !email.trim() || !password}
+                  disabled={busy || !email.trim() || !password || !isSupabaseConfigured}
                   className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
                              bg-baby-text text-white font-sans text-sm font-medium
                              hover:bg-baby-text/85 transition-colors disabled:opacity-50 ${focusRing}`}
@@ -332,7 +355,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => handleOAuth('google')}
-                disabled={busy}
+                disabled={busy || !isSupabaseConfigured}
                 className={`${oauthBtnCls} bg-white dark:bg-gray-800 border-baby-text/25
                            text-baby-text hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50`}
               >
@@ -477,7 +500,7 @@ export default function LoginPage() {
 
                     <button
                       type="submit"
-                      disabled={busy || !name.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !confirmPassword}
+                      disabled={busy || !name.trim() || !lastName.trim() || !email.trim() || password.length < 6 || !confirmPassword || !isSupabaseConfigured}
                       className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
                                  bg-baby-text text-white font-sans text-sm font-medium
                                  hover:bg-baby-text/85 transition-colors disabled:opacity-50 ${focusRing}`}
@@ -498,7 +521,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => handleOAuth('google')}
-                    disabled={busy}
+                    disabled={busy || !isSupabaseConfigured}
                     className={`${oauthBtnCls} bg-white dark:bg-gray-800 border-baby-text/25
                                text-baby-text hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50`}
                   >
@@ -526,4 +549,3 @@ export default function LoginPage() {
     </section>
   );
 }
-

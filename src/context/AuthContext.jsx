@@ -12,14 +12,14 @@
  *   signInWithOAuth, resetPassword, updatePassword, signOut, accessToken
  */
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { assertSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !!supabase);
 
   /* ── Fetch profile from DB ─────────────────────── */
   const fetchProfile = useCallback(async (userId) => {
@@ -39,6 +39,8 @@ export function AuthProvider({ children }) {
 
   /* ── Listen to Supabase auth state ─────────────── */
   useEffect(() => {
+    if (!supabase) return undefined;
+
     // 1. Restore any existing session from storage
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
@@ -72,10 +74,16 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
+  const requireSupabase = useCallback(() => {
+    assertSupabaseConfigured();
+    return supabase;
+  }, []);
+
   /* ── Auth actions ──────────────────────────────── */
   const signUp = useCallback(async (email, password, firstName, lastName) => {
+    const client = requireSupabase();
     const fullName = lastName ? `${firstName} ${lastName}` : firstName;
-    const { error } = await supabase.auth.signUp({
+    const { error } = await client.auth.signUp({
       email,
       password,
       options: {
@@ -84,15 +92,17 @@ export function AuthProvider({ children }) {
       },
     });
     if (error) throw error;
-  }, []);
+  }, [requireSupabase]);
 
   const signInWithPassword = useCallback(async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const client = requireSupabase();
+    const { error } = await client.auth.signInWithPassword({ email, password });
     if (error) throw error;
-  }, []);
+  }, [requireSupabase]);
 
   const signInWithOtp = useCallback(async (email) => {
-    const { error } = await supabase.auth.signInWithOtp({
+    const client = requireSupabase();
+    const { error } = await client.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: true,
@@ -100,32 +110,37 @@ export function AuthProvider({ children }) {
       },
     });
     if (error) throw error;
-  }, []);
+  }, [requireSupabase]);
 
   const signInWithOAuth = useCallback(async (provider) => {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const client = requireSupabase();
+    const { error } = await client.auth.signInWithOAuth({
       provider,
       options: {
         redirectTo: window.location.origin + '/auth/callback',
       },
     });
     if (error) throw error;
-  }, []);
+  }, [requireSupabase]);
 
   const resetPassword = useCallback(async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const client = requireSupabase();
+    const { error } = await client.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin + '/redefinir-senha',
     });
     if (error) throw error;
-  }, []);
+  }, [requireSupabase]);
 
   const updatePassword = useCallback(async (newPassword) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const client = requireSupabase();
+    const { error } = await client.auth.updateUser({ password: newPassword });
     if (error) throw error;
-  }, []);
+  }, [requireSupabase]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setSession(null);
     setProfile(null);
     try { localStorage.removeItem('nobre_amor_v1_auth'); } catch { /* ok */ }
@@ -188,4 +203,3 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
   return ctx;
 }
-

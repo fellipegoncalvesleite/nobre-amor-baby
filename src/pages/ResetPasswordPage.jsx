@@ -14,7 +14,7 @@ import { motion } from 'framer-motion';
 import { FiMail, FiLock, FiLoader, FiCheck } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabaseClient';
+import { getSupabaseConfigError, isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 import { focusRing } from '../lib/ui';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
@@ -37,6 +37,8 @@ export default function ResetPasswordPage() {
 
   // Detect recovery session from Supabase redirect (implicit flow fallback)
   useEffect(() => {
+    if (!supabase) return undefined;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setMode('update');
@@ -49,6 +51,10 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const code = searchParams.get('code');
     if (!code) return;
+    if (!supabase) {
+      toast.error(getSupabaseConfigError().message, { style: toastStyle });
+      return;
+    }
     supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
       if (error) {
         toast.error('Link expirado ou inválido. Solicite um novo.', { style: toastStyle });
@@ -145,7 +151,7 @@ export default function ResetPasswordPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={busy || !email.trim()}
+                  disabled={busy || !email.trim() || !isSupabaseConfigured}
                   className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
                              bg-baby-accent text-white font-sans text-sm font-medium
                              hover:bg-baby-accent/90 transition-colors disabled:opacity-50 ${focusRing}`}
