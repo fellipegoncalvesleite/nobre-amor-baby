@@ -126,6 +126,14 @@ export default function ShippingSelector() {
 
   /* ── Address field handler ──────────────────────── */
   const handleField = (field) => (e) => setAddress({ [field]: e.target.value });
+  const handleUfChange = (e) => {
+    const uf = String(e.target.value || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+    setAddress({ uf });
+    const norm = normalizeCep(address.cep);
+    if (uf.length === 2 && isValidCep(norm) && address.city.trim()) {
+      runShippingCalc(norm, address.city, uf);
+    }
+  };
 
   /* ── Styling ────────────────────────────────────── */
   const inputCls = `w-full px-3.5 py-2.5 rounded-xl border border-baby-text/15 bg-surface
@@ -255,10 +263,11 @@ export default function ShippingSelector() {
               id="ship-uf"
               type="text"
               value={address.uf}
-              readOnly
-              tabIndex={-1}
+              onChange={handleUfChange}
               placeholder="UF"
-              className={`${inputCls} bg-baby-pink/10 cursor-default`}
+              maxLength={2}
+              autoComplete="address-level1"
+              className={`${inputCls} uppercase`}
             />
           </div>
         </div>
