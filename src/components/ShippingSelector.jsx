@@ -61,7 +61,11 @@ export default function ShippingSelector() {
   const lookupCep = useCallback(async (rawCep) => {
     const norm = normalizeCep(rawCep);
     if (!isValidCep(norm)) return;
-    if (norm === prevCepRef.current) return;
+    const hasAddressAutofill =
+      address.street.trim() &&
+      address.city.trim() &&
+      address.uf.trim();
+    if (norm === prevCepRef.current && hasAddressAutofill) return;
     prevCepRef.current = norm;
 
     setShipping({ isLoading: true, error: '' });
@@ -82,11 +86,11 @@ export default function ShippingSelector() {
         street: info.logradouro || '',
         neighborhood: info.bairro || '',
         city: info.localidade || '',
-        uf: info.uf || '',
+        uf: String(info.uf || '').toUpperCase(),
       });
 
       // Calculate shipping
-      await runShippingCalc(norm, info.localidade, info.uf);
+      await runShippingCalc(norm, info.localidade, String(info.uf || '').toUpperCase());
     } catch {
       toast('Erro ao consultar CEP. Tente novamente.', {
         icon: '❌',
@@ -94,7 +98,7 @@ export default function ShippingSelector() {
       });
       setShipping({ isLoading: false, error: 'Erro ao consultar CEP.' });
     }
-  }, [setAddress, setShipping, runShippingCalc]);
+  }, [address.city, address.street, address.uf, setAddress, setShipping, runShippingCalc]);
 
   /* ── Recalculate button handler ─────────────────── */
   const handleRecalculate = () => {
