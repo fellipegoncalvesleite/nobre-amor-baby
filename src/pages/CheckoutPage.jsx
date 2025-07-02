@@ -250,6 +250,41 @@ export default function CheckoutPage() {
     ['pix', 'cartao'].includes(payment.method) &&
     (payment.method === 'pix' || cardValid);
 
+  const submitIssues = useMemo(() => {
+    const issues = [];
+    if (items.length === 0) issues.push('Seu carrinho está vazio.');
+    if (shipping.isLoading) issues.push('Aguarde o cálculo do frete terminar.');
+    if (shipping.error) issues.push(shipping.error);
+    if (shipping.feeCents == null) issues.push('Calcule o frete antes de confirmar o pedido.');
+    if (!address.number.trim()) issues.push('Informe o número do endereço.');
+    if (form.name.trim().length < 2) issues.push('Informe seu nome.');
+    if (digitsOnly(form.phone).length < 10) issues.push('Informe um telefone válido.');
+    if (!form.email.trim().includes('@')) issues.push('Informe um e-mail válido.');
+    if (!isValidCpfCnpj(form.cpfCnpj)) issues.push('Informe um CPF ou CNPJ válido.');
+    if (payment.method === 'cartao') {
+      if (cardForm.holderName.trim().length < 3) issues.push('Informe o nome no cartão.');
+      if (digitsOnly(cardForm.number).length < 13 || digitsOnly(cardForm.number).length > 19) issues.push('Informe um número de cartão válido.');
+      if (!isValidCardExpiry(cardForm.expiry)) issues.push('Informe uma validade de cartão válida.');
+      if (digitsOnly(cardForm.ccv).length < 3 || digitsOnly(cardForm.ccv).length > 4) issues.push('Informe um CVV válido.');
+    }
+    return issues;
+  }, [
+    items.length,
+    shipping.isLoading,
+    shipping.error,
+    shipping.feeCents,
+    address.number,
+    form.name,
+    form.phone,
+    form.email,
+    form.cpfCnpj,
+    payment.method,
+    cardForm.holderName,
+    cardForm.number,
+    cardForm.expiry,
+    cardForm.ccv,
+  ]);
+
   const handleField = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
@@ -281,7 +316,7 @@ export default function CheckoutPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!canSubmit || submitting) {
-      toast.error('Preencha os dados do cliente, endereço e pagamento para continuar.', { style: toastStyle });
+      toast.error(submitIssues[0] || 'Preencha os dados do cliente, endereço e pagamento para continuar.', { style: toastStyle });
       return;
     }
 
@@ -572,16 +607,26 @@ export default function CheckoutPage() {
               )}
             </section>
 
-            <div className="flex flex-wrap gap-3">
-              <Link to="/carrinho" className={btnSecondary}>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link to="/carrinho" className={`${btnSecondary} w-full sm:w-auto`}>
                 <FiChevronLeft size={16} />
                 Voltar ao carrinho
               </Link>
-              <button type="submit" disabled={!canSubmit || submitting} className={`${btnPrimary} disabled:opacity-50`}>
+              <button
+                type="submit"
+                disabled={submitting}
+                aria-disabled={!canSubmit || submitting}
+                className={`${btnPrimary} w-full sm:w-auto disabled:opacity-50`}
+              >
                 {submitting ? <FiLoader size={18} className="animate-spin" /> : <FiSend size={18} />}
                 {submitting ? 'Criando pedido...' : 'Criar pedido'}
               </button>
             </div>
+            {!canSubmit && submitIssues.length > 0 && (
+              <p className="font-sans text-xs text-baby-text/55 px-1">
+                Falta concluir: {submitIssues[0]}
+              </p>
+            )}
           </form>
 
           <aside className="space-y-6">
