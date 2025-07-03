@@ -13,7 +13,12 @@ function json(res, status, body) {
 }
 
 function sanitizeOrder(order, items = []) {
-  const { id: _id, ...safe } = order;
+  const {
+    id: _id,
+    user_id: _userId,
+    customer_cpf_cnpj: _customerDocument,
+    ...safe
+  } = order;
   return {
     ...safe,
     items,
@@ -22,7 +27,33 @@ function sanitizeOrder(order, items = []) {
   };
 }
 
-const PUBLIC_ORDER_SELECT = `
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isManagerProfile(profile) {
+  return profile?.role === 'manager' || profile?.role === 'debug';
+}
+
+function isMissingColumnError(error, columnNames = []) {
+  const errMsg = String(error?.message || '').toLowerCase();
+  if (!errMsg) return false;
+  if (!errMsg.includes('column') && !errMsg.includes('schema cache')) return false;
+  return columnNames.some((name) => errMsg.includes(String(name).toLowerCase()));
+}
+
+const OPTIONAL_ORDER_COLUMNS = [
+  'user_id',
+  'customer_cpf_cnpj',
+  'payment_error_message',
+  'cancel_reason',
+  'cancelled_at',
+  'rejected_reason',
+  'rejected_at',
+  'confirmed_at',
+];
+
+const ORDER_SELECT_REQUIRED = `
   id, order_code, status, created_at,
   customer_name, customer_phone, customer_email,
   customer_message,
@@ -32,9 +63,114 @@ const PUBLIC_ORDER_SELECT = `
   subtotal_cents, total_cents, paid_total_cents,
   payment_method, payment_ref, payment_state, payment_provider,
   payment_external_id, payment_link_url, payment_pix_copy_paste,
-  payment_pix_qr_code, payment_expires_at, paid_at, payment_last_event, payment_error_message,
+  payment_pix_qr_code, payment_expires_at, paid_at, payment_last_event
+`;
+
+const PUBLIC_ORDER_SELECT = `
+  ${ORDER_SELECT_REQUIRED},
+  user_id,
+  payment_error_message,
   cancel_reason, cancelled_at, rejected_reason, rejected_at, confirmed_at
 `;
+
+const RETRY_ORDER_SELECT = `
+  ${PUBLIC_ORDER_SELECT},
+  customer_cpf_cnpj
+`;
+
+const MY_ORDERS_SELECT = `
+  id, order_code, status, created_at, customer_name,
+  subtotal_cents, shipping_fee_cents, total_cents,
+  payment_method, payment_state, paid_at,
+  payment_link_url, payment_pix_copy_paste, payment_pix_qr_code, payment_expires_at,
+  cancel_reason, cancelled_at
+`;
+
+const MY_ORDERS_FALLBACK_SELECT = `
+  id, order_code, status, created_at, customer_name,
+  subtotal_cents, shipping_fee_cents, total_cents,
+  payment_method, payment_state, paid_at,
+  payment_link_url, payment_pix_copy_paste, payment_pix_qr_code, payment_expires_at
+`;
+
+async function selectOrderWithFallback(supabase, orderCode, selectClause) {
+  let data;
+  let error;
+
+  ({ data, error } = await supabase
+    .from('orders')
+    .select(selectClause)
+    .eq('order_code', orderCode)
+    .maybeSingle());
+
+  if (error && isMissingColumnError(error, OPTIONAL_ORDER_COLUMNS)) {
+    console.warn('[public/order] optional columns missing, retrying with base fields only:', error.message);
+    ({ data, error } = await supabase
+      .from('orders')
+      .select(ORDER_SELECT_REQUIRED)
+      .eq('order_code', orderCode)
+      .maybeSingle());
+  }
+
+  return { data, error };
+}
+
+async function requireAuthenticatedUser(req, res) {
+  const auth = await verifyUser(req);
+  if (!auth.user) {
+    json(res, 401, { error: 'unauthorized', message: 'Token inválido ou ausente.' });
+    return null;
+  }
+  return auth;
+}
+
+async function requireOrderAccess(req, res, order) {
+  const auth = await requireAuthenticatedUser(req, res);
+  if (!auth) return null;
+
+  if (isManagerProfile(auth.profile)) return auth;
+
+  const ownsById = order?.user_id && String(order.user_id) === String(auth.user.id);
+  const orderEmail = normalizeEmail(order?.customer_email);
+  const userEmail = normalizeEmail(auth.user.email);
+  const ownsByEmail = Boolean(orderEmail) && orderEmail === userEmail;
+
+  if (!ownsById && !ownsByEmail) {
+    json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
+    return null;
+  }
+
+  return auth;
+}
+
+async function selectMyOrdersByField(supabase, field, value) {
+  if (!value) return { data: [], error: null };
+
+  let data;
+  let error;
+
+  ({ data, error } = await supabase
+    .from('orders')
+    .select(MY_ORDERS_SELECT)
+    .eq(field, value)
+    .order('created_at', { ascending: false })
+    .limit(100));
+
+  if (error && isMissingColumnError(error, ['cancel_reason', 'cancelled_at'])) {
+    ({ data, error } = await supabase
+      .from('orders')
+      .select(MY_ORDERS_FALLBACK_SELECT)
+      .eq(field, value)
+      .order('created_at', { ascending: false })
+      .limit(100));
+  }
+
+  if (error && field === 'user_id' && isMissingColumnError(error, ['user_id'])) {
+    return { data: [], error: null };
+  }
+
+  return { data: data || [], error };
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -217,11 +353,7 @@ async function handleOrder(req, res, supabase) {
     return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?orderCode=.' });
   }
 
-  const { data: order, error: orderErr } = await supabase
-    .from('orders')
-    .select(PUBLIC_ORDER_SELECT)
-    .eq('order_code', orderCode)
-    .maybeSingle();
+  const { data: order, error: orderErr } = await selectOrderWithFallback(supabase, orderCode, PUBLIC_ORDER_SELECT);
 
   if (orderErr) {
     console.error('[public/order] fetch error:', orderErr);
@@ -230,6 +362,8 @@ async function handleOrder(req, res, supabase) {
   if (!order) {
     return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
   }
+  const auth = await requireOrderAccess(req, res, order);
+  if (!auth) return null;
 
   const { data: items } = await supabase
     .from('order_items')
@@ -254,17 +388,15 @@ async function handleCancelOrder(req, res, supabase) {
     return json(res, 400, { error: 'bad_request', message: 'Informe o motivo do cancelamento.' });
   }
 
-  const { data: order, error: fetchErr } = await supabase
-    .from('orders')
-    .select('id, order_code, status, payment_state')
-    .eq('order_code', orderCode)
-    .maybeSingle();
+  const { data: order, error: fetchErr } = await selectOrderWithFallback(supabase, orderCode, PUBLIC_ORDER_SELECT);
 
   if (fetchErr) {
     console.error('[public/cancel-order] fetch error:', fetchErr);
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
   }
   if (!order) return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
+  const auth = await requireOrderAccess(req, res, order);
+  if (!auth) return null;
 
   if (order.status !== 'new') {
     return json(res, 400, { error: 'cannot_cancel', message: 'Este pedido já entrou em processamento e não pode mais ser cancelado.' });
@@ -309,17 +441,15 @@ async function handleRetryPayment(req, res, supabase) {
     return json(res, 400, { error: 'bad_request', message: 'orderCode é obrigatório.' });
   }
 
-  const { data: order, error: orderErr } = await supabase
-    .from('orders')
-    .select(PUBLIC_ORDER_SELECT)
-    .eq('order_code', orderCode)
-    .maybeSingle();
+  const { data: order, error: orderErr } = await selectOrderWithFallback(supabase, orderCode, RETRY_ORDER_SELECT);
 
   if (orderErr) {
     console.error('[public/retry-payment] fetch order error:', orderErr);
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
   }
   if (!order) return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
+  const auth = await requireOrderAccess(req, res, order);
+  if (!auth) return null;
   if (order.status !== 'new') {
     return json(res, 400, { error: 'invalid_status', message: 'A cobrança só pode ser recriada para pedidos novos.' });
   }
@@ -359,14 +489,27 @@ async function handleRetryPayment(req, res, supabase) {
       requestBaseUrl: getRequestBaseUrl(req),
     });
 
-    const { error: updateErr } = await supabase
+    let updateErr;
+    const paymentUpdate = {
+      ...paymentResult.orderUpdate,
+      payment_state: paymentResult.payload.state,
+      payment_error_message: null,
+    };
+
+    ({ error: updateErr } = await supabase
       .from('orders')
-      .update({
-        ...paymentResult.orderUpdate,
-        payment_state: paymentResult.payload.state,
-        payment_error_message: null,
-      })
-      .eq('id', order.id);
+      .update(paymentUpdate)
+      .eq('id', order.id));
+
+    if (updateErr && isMissingColumnError(updateErr, ['payment_error_message'])) {
+      const fallbackUpdate = { ...paymentUpdate };
+      delete fallbackUpdate.payment_error_message;
+
+      ({ error: updateErr } = await supabase
+        .from('orders')
+        .update(fallbackUpdate)
+        .eq('id', order.id));
+    }
 
     if (updateErr) {
       console.error('[public/retry-payment] update error:', updateErr);
@@ -382,14 +525,31 @@ async function handleRetryPayment(req, res, supabase) {
   } catch (err) {
     console.error('[public/retry-payment] create error:', err);
 
-    await supabase
+    let retryFailureErr;
+    const retryFailureUpdate = {
+      payment_state: 'failed',
+      payment_last_event: 'PAYMENT_RETRY_FAILED',
+      payment_error_message: err.message || 'Falha ao gerar nova cobrança.',
+    };
+
+    ({ error: retryFailureErr } = await supabase
       .from('orders')
-      .update({
-        payment_state: 'failed',
-        payment_last_event: 'PAYMENT_RETRY_FAILED',
-        payment_error_message: err.message || 'Falha ao gerar nova cobrança.',
-      })
-      .eq('id', order.id);
+      .update(retryFailureUpdate)
+      .eq('id', order.id));
+
+    if (retryFailureErr && isMissingColumnError(retryFailureErr, ['payment_error_message'])) {
+      const fallbackFailureUpdate = { ...retryFailureUpdate };
+      delete fallbackFailureUpdate.payment_error_message;
+
+      ({ error: retryFailureErr } = await supabase
+        .from('orders')
+        .update(fallbackFailureUpdate)
+        .eq('id', order.id));
+    }
+
+    if (retryFailureErr) {
+      console.error('[public/retry-payment] failure update error:', retryFailureErr);
+    }
 
     return json(res, 500, {
       error: 'retry_failed',
@@ -402,6 +562,12 @@ async function handleProfile(req, res, supabase) {
   const { userId } = req.query;
   if (!userId) {
     return json(res, 400, { error: 'bad_request', message: 'Missing ?userId=.' });
+  }
+  const auth = await requireAuthenticatedUser(req, res);
+  if (!auth) return null;
+
+  if (String(auth.user.id) !== String(userId) && !isManagerProfile(auth.profile)) {
+    return json(res, 403, { error: 'forbidden', message: 'Acesso negado a este perfil.' });
   }
 
   const { data: profile, error } = await supabase
@@ -424,28 +590,28 @@ async function handleProfile(req, res, supabase) {
 }
 
 async function handleMyOrders(req, res, supabase) {
-  const { user } = await verifyUser(req);
-  if (!user) {
-    return json(res, 401, { error: 'unauthorized', message: 'Token inválido ou ausente.' });
-  }
+  const auth = await requireAuthenticatedUser(req, res);
+  if (!auth) return null;
 
-  const { data: orders, error: ordersErr } = await supabase
-    .from('orders')
-    .select(`
-      id, order_code, status, created_at, customer_name,
-      subtotal_cents, shipping_fee_cents, total_cents,
-      payment_method, payment_state, paid_at,
-      payment_link_url, payment_pix_copy_paste, payment_pix_qr_code, payment_expires_at,
-      cancel_reason, cancelled_at
-    `)
-    .or(`user_id.eq.${user.id},customer_email.eq.${user.email}`)
-    .order('created_at', { ascending: false })
-    .limit(100);
+  const [{ data: userIdOrders, error: userIdOrdersErr }, { data: emailOrders, error: emailOrdersErr }] = await Promise.all([
+    selectMyOrdersByField(supabase, 'user_id', auth.user.id),
+    selectMyOrdersByField(supabase, 'customer_email', auth.user.email),
+  ]);
 
-  if (ordersErr) {
-    console.error('[public/my-orders] error:', ordersErr);
+  if (userIdOrdersErr || emailOrdersErr) {
+    console.error('[public/my-orders] error:', userIdOrdersErr || emailOrdersErr);
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedidos.' });
   }
+
+  const ordersMap = new Map();
+  [...(userIdOrders || []), ...(emailOrders || [])].forEach((order) => {
+    const key = order.id || order.order_code;
+    if (!ordersMap.has(key)) ordersMap.set(key, order);
+  });
+
+  const orders = Array.from(ordersMap.values()).sort(
+    (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime(),
+  );
 
   const result = [];
   for (const currentOrder of orders || []) {

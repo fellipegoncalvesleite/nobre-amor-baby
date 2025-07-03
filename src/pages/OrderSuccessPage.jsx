@@ -12,6 +12,7 @@ import {
   FiUser,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 import { btnPrimary, btnSecondary } from '../lib/ui';
 import { getLastOrderId } from '../utils/orderMessage';
 import { getPaymentMethodLabel, getPaymentStatus } from '../lib/orderStatus';
@@ -21,6 +22,7 @@ const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12p
 export default function OrderSuccessPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const { accessToken } = useAuth();
   const orderCode = location.state?.orderCode || searchParams.get('orderCode') || getLastOrderId();
   const initialPayment = location.state?.payment || null;
   const warning = location.state?.warning || null;
@@ -31,7 +33,7 @@ export default function OrderSuccessPage() {
 
   useEffect(() => {
     let active = true;
-    if (!orderCode) {
+    if (!orderCode || !accessToken) {
       setLoading(false);
       return () => {};
     }
@@ -40,7 +42,9 @@ export default function OrderSuccessPage() {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`/api/public?resource=order&orderCode=${encodeURIComponent(orderCode)}`);
+        const response = await fetch(`/api/public?resource=order&orderCode=${encodeURIComponent(orderCode)}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || 'Não foi possível carregar o pedido.');
         if (active) setOrder(data.order || null);
@@ -56,7 +60,7 @@ export default function OrderSuccessPage() {
     return () => {
       active = false;
     };
-  }, [orderCode]);
+  }, [accessToken, orderCode]);
 
   const payment = order?.payment || initialPayment;
   const paymentStatus = useMemo(() => getPaymentStatus(payment?.state || 'pending'), [payment]);
@@ -191,7 +195,7 @@ export default function OrderSuccessPage() {
                 </div>
               )}
 
-              {payment.state === 'pending' && payment.method === 'cartao' && payment.url === '__hosted_card_disabled__' && (
+              {payment.state === 'pending' && payment.method === 'cartao' && payment.url && payment.url !== '__hosted_card_disabled__' && (
                 <div className="rounded-2xl border border-baby-pink/60 bg-baby-pink/12 p-5">
                   <p className="font-sans text-sm text-baby-text/65 leading-relaxed mb-4">
                     O pagamento com cartão é concluído na página hospedada do Asaas. Se você fechar a aba, o link continua disponível nos detalhes do pedido.
@@ -214,7 +218,7 @@ export default function OrderSuccessPage() {
                   )}
                 </div>
               )}
-              {payment.state === 'pending' && payment.method === 'cartao' && (
+              {payment.state === 'pending' && payment.method === 'cartao' && (!payment.url || payment.url === '__hosted_card_disabled__') && (
                 <div className="rounded-2xl border border-baby-pink/60 bg-baby-pink/12 p-5">
                   <p className="font-sans text-sm text-baby-text/65 leading-relaxed">
                     Recebemos o pagamento com cartão e ele está em análise. Acompanhe o status em Meus Pedidos.

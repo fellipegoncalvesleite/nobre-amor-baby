@@ -17,6 +17,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { btnSecondary, focusRing, formatPrice } from '../lib/ui';
 import {
   canCancelOrder,
@@ -71,6 +72,7 @@ export default function CustomerOrderDetailPage() {
   const { orderCode } = useParams();
   const navigate = useNavigate();
   const { addToCart } = useStore();
+  const { accessToken } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -84,7 +86,9 @@ export default function CustomerOrderDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/public?resource=order&orderCode=${encodeURIComponent(orderCode)}`);
+      const response = await fetch(`/api/public?resource=order&orderCode=${encodeURIComponent(orderCode)}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Pedido não encontrado.');
       setOrder(data.order || null);
@@ -94,7 +98,7 @@ export default function CustomerOrderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [orderCode]);
+  }, [accessToken, orderCode]);
 
   useEffect(() => {
     fetchOrder();
@@ -171,7 +175,10 @@ export default function CustomerOrderDetailPage() {
     try {
       const response = await fetch('/api/public?resource=retry-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({ orderCode: order.order_code }),
       });
       const data = await response.json();
@@ -196,7 +203,10 @@ export default function CustomerOrderDetailPage() {
     try {
       const response = await fetch('/api/public?resource=cancel-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({ orderCode, reason: cancelReason.trim() }),
       });
       const data = await response.json();
@@ -350,7 +360,7 @@ export default function CustomerOrderDetailPage() {
                 </div>
               )}
 
-              {order.payment_state === 'pending' && order.payment_method === 'cartao' && order.payment?.url === '__hosted_card_disabled__' && (
+              {order.payment_state === 'pending' && order.payment_method === 'cartao' && order.payment?.url && order.payment.url !== '__hosted_card_disabled__' && (
                 <div className="pt-3">
                   <a href={order.payment.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-baby-text text-white font-sans text-sm">
                     Abrir pagamento com cartão
@@ -359,7 +369,7 @@ export default function CustomerOrderDetailPage() {
                 </div>
               )}
 
-              {order.payment_state === 'pending' && order.payment_method === 'cartao' && (
+              {order.payment_state === 'pending' && order.payment_method === 'cartao' && (!order.payment?.url || order.payment.url === '__hosted_card_disabled__') && (
                 <div className="pt-3">
                   <div className="rounded-2xl border border-baby-text/10 bg-baby-cream p-4">
                     <p className="font-sans text-sm text-baby-text/60">

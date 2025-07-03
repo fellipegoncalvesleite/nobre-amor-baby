@@ -14,7 +14,7 @@ import { motion } from 'framer-motion';
 import { FiMail, FiLock, FiLoader, FiCheck } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
-import { getSupabaseConfigError, isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 import { focusRing } from '../lib/ui';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
@@ -28,6 +28,11 @@ export default function ResetPasswordPage() {
   const { resetPassword, updatePassword } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const hasRecoveryParams = Boolean(
+    searchParams.get('code') ||
+    searchParams.get('type') === 'recovery' ||
+    window.location.hash.includes('type=recovery'),
+  );
 
   const [mode, setMode] = useState('request'); // 'request' | 'update' | 'sent' | 'done'
   const [email, setEmail] = useState('');
@@ -39,30 +44,29 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     if (!supabase) return undefined;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setMode('update');
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    let active = true;
 
-  // Handle PKCE code exchange from password reset redirect
-  useEffect(() => {
-    const code = searchParams.get('code');
-    if (!code) return;
-    if (!supabase) {
-      toast.error(getSupabaseConfigError().message, { style: toastStyle });
-      return;
-    }
-    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-      if (error) {
-        toast.error('Link expirado ou inválido. Solicite um novo.', { style: toastStyle });
-      } else {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        (event === 'PASSWORD_RECOVERY' ||
+          (hasRecoveryParams && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION'))) &&
+        session
+      ) {
         setMode('update');
       }
     });
-  }, [searchParams]);
+
+    if (hasRecoveryParams) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (active && session) setMode('update');
+      });
+    }
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [hasRecoveryParams]);
 
   /* ── Request reset email ───────────────────────── */
   const handleRequest = async (e) => {

@@ -70,6 +70,13 @@ function normalizeExpiryYear(value) {
   return digits.slice(0, 4);
 }
 
+function isMissingColumnError(error, columnNames = []) {
+  const errMsg = String(error?.message || '').toLowerCase();
+  if (!errMsg) return false;
+  if (!errMsg.includes('column') && !errMsg.includes('schema cache')) return false;
+  return columnNames.some((name) => errMsg.includes(String(name).toLowerCase()));
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -182,11 +189,27 @@ export default async function handler(req, res) {
       ...(userId ? { user_id: userId } : {}),
     };
 
-    const { data: order, error: orderErr } = await supabase
+    let order;
+    let orderErr;
+
+    ({ data: order, error: orderErr } = await supabase
       .from('orders')
       .insert(orderInsert)
       .select('*')
-      .single();
+      .single());
+
+    if (orderErr && isMissingColumnError(orderErr, ['customer_cpf_cnpj', 'user_id'])) {
+      console.warn('[orders] optional order columns missing, retrying with core fields only:', orderErr.message);
+      const fallbackInsert = { ...orderInsert };
+      delete fallbackInsert.customer_cpf_cnpj;
+      delete fallbackInsert.user_id;
+
+      ({ data: order, error: orderErr } = await supabase
+        .from('orders')
+        .insert(fallbackInsert)
+        .select('*')
+        .single());
+    }
 
     if (orderErr || !order) {
       console.error('[orders] insert order error:', orderErr);
@@ -229,10 +252,23 @@ export default async function handler(req, res) {
         customerDocument: normalizeCpfCnpj(customer.cpfCnpj),
       });
 
-      const { error: paymentUpdateErr } = await supabase
+      let paymentUpdateErr;
+
+      ({ error: paymentUpdateErr } = await supabase
         .from('orders')
         .update(paymentResult.orderUpdate)
-        .eq('id', order.id);
+        .eq('id', order.id));
+
+      if (paymentUpdateErr && isMissingColumnError(paymentUpdateErr, ['payment_error_message'])) {
+        console.warn('[orders] payment_error_message column missing, retrying payment sync without it:', paymentUpdateErr.message);
+        const fallbackPaymentUpdate = { ...paymentResult.orderUpdate };
+        delete fallbackPaymentUpdate.payment_error_message;
+
+        ({ error: paymentUpdateErr } = await supabase
+          .from('orders')
+          .update(fallbackPaymentUpdate)
+          .eq('id', order.id));
+      }
 
       if (paymentUpdateErr) {
         console.error('[orders] payment sync error:', paymentUpdateErr);
@@ -254,16 +290,34 @@ export default async function handler(req, res) {
       console.error('[orders] payment creation error:', paymentErr);
       const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobranca.');
 
-      await supabase
+      let paymentFailureUpdateErr;
+      const paymentFailureUpdate = {
+        payment_method: payment.method,
+        payment_provider: 'asaas',
+        payment_state: 'failed',
+        payment_last_event: failedPayment.lastEvent,
+        payment_error_message: failedPayment.message,
+      };
+
+      ({ error: paymentFailureUpdateErr } = await supabase
         .from('orders')
-        .update({
-          payment_method: payment.method,
-          payment_provider: 'asaas',
-          payment_state: 'failed',
-          payment_last_event: failedPayment.lastEvent,
-          payment_error_message: failedPayment.message,
-        })
-        .eq('id', order.id);
+        .update(paymentFailureUpdate)
+        .eq('id', order.id));
+
+      if (paymentFailureUpdateErr && isMissingColumnError(paymentFailureUpdateErr, ['payment_error_message'])) {
+        console.warn('[orders] payment_error_message column missing, retrying failed-payment update without it:', paymentFailureUpdateErr.message);
+        const fallbackFailureUpdate = { ...paymentFailureUpdate };
+        delete fallbackFailureUpdate.payment_error_message;
+
+        ({ error: paymentFailureUpdateErr } = await supabase
+          .from('orders')
+          .update(fallbackFailureUpdate)
+          .eq('id', order.id));
+      }
+
+      if (paymentFailureUpdateErr) {
+        console.error('[orders] failed payment state update error:', paymentFailureUpdateErr);
+      }
 
       return json(res, 201, {
         orderId: order.id,

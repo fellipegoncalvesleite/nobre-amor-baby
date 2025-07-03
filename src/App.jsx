@@ -74,9 +74,9 @@ function App() {
           <Route path="/favoritos" element={<WishlistPage />} />
           <Route path="/carrinho" element={<CartPage />} />
           <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
-          <Route path="/pedido-enviado" element={<OrderSuccessPage />} />
-          <Route path="/meus-pedidos" element={<MeusPedidosPage />} />
-          <Route path="/meus-pedidos/:orderCode" element={<CustomerOrderDetailPage />} />
+          <Route path="/pedido-enviado" element={<ProtectedRoute><OrderSuccessPage /></ProtectedRoute>} />
+          <Route path="/meus-pedidos" element={<ProtectedRoute><MeusPedidosPage /></ProtectedRoute>} />
+          <Route path="/meus-pedidos/:orderCode" element={<ProtectedRoute><CustomerOrderDetailPage /></ProtectedRoute>} />
           <Route path="/minha-conta" element={<ProtectedRoute><MinhaContaPage /></ProtectedRoute>} />
           <Route path="/entrar" element={<LoginPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />

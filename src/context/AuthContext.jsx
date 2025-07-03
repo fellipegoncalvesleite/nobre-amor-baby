@@ -22,10 +22,12 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(() => !!supabase);
 
   /* ── Fetch profile from DB ─────────────────────── */
-  const fetchProfile = useCallback(async (userId) => {
-    if (!userId) { setProfile(null); return; }
+  const fetchProfile = useCallback(async (userId, token) => {
+    if (!userId || !token) { setProfile(null); return; }
     try {
-      const res = await fetch(`/api/public?resource=profile&userId=${userId}`);
+      const res = await fetch(`/api/public?resource=profile&userId=${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (res.ok) {
         const data = await res.json();
         setProfile(data.profile || null);
@@ -44,7 +46,7 @@ export function AuthProvider({ children }) {
     // 1. Restore any existing session from storage
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
-      if (s?.user) fetchProfile(s.user.id);
+      if (s?.user && s?.access_token) fetchProfile(s.user.id, s.access_token);
       setLoading(false);
     });
 
@@ -63,7 +65,7 @@ export function AuthProvider({ children }) {
 
       setSession(s);
       if (s?.user) {
-        fetchProfile(s.user.id);
+        fetchProfile(s.user.id, s.access_token);
       } else {
         setProfile(null);
       }
