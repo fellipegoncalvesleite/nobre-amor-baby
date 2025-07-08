@@ -33,7 +33,6 @@ E-commerce de moda infantil desenvolvido com React e Vite, com catálogo públic
 
 ## Configuração
 
-Copie o arquivo `.env.example` para `.env` e preencha as variáveis necessárias:
 
 ```env
 VITE_SUPABASE_URL=
