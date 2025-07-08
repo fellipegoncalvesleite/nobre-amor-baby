@@ -39,6 +39,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
     ],
     description: 'Macacão de algodão orgânico macio, perfeito para recém-nascidos',
     details: [
@@ -73,6 +75,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&h=750&fit=crop',
     ],
     description: 'Casaquinho de tricô aconchegante em cores pastéis suaves',
     details: [
@@ -105,6 +109,8 @@ const products = [
     isPromo: true,
     images: [
       'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
     ],
     description: 'Vestido floral adorável para ocasiões especiais',
     details: [
@@ -136,6 +142,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
     ],
     description: 'Conjunto com 3 bodies de algodão macio',
     details: [
@@ -168,6 +176,8 @@ const products = [
     isPromo: true,
     images: [
       'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
     ],
     description: 'Pijama quentinho com pezinho para noites tranquilas',
     details: [
@@ -200,6 +210,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
     ],
     description: 'Touca delicada com acabamento em renda',
     details: [
@@ -231,6 +243,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
     ],
     description: 'Kit presente especial para recém-nascidos',
     details: [
@@ -262,6 +276,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
     ],
     description: 'Manta de musselina de bambu ultra macia',
     details: [
@@ -293,6 +309,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
     ],
     description: 'Calcinha adorável com babados para brincar',
     details: ['Algodão macio com elastano', 'Babado duplo com acabamento'],
@@ -321,6 +339,8 @@ const products = [
     isPromo: true,
     images: [
       'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&h=750&fit=crop',
     ],
     description: 'Camisa clássica com gola Peter Pan',
     details: [
@@ -353,6 +373,8 @@ const products = [
     isPromo: false,
     images: [
       'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
     ],
     description: 'Sapatinhos de tricô feitos à mão em várias cores',
     details: [
@@ -386,6 +408,8 @@ const products = [
     isPromo: true,
     images: [
       'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
+      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
     ],
     description: 'Coleção completa de presentes para o primeiro ano',
     details: [

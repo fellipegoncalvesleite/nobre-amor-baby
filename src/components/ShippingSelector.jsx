@@ -6,7 +6,8 @@
  *  3. Shows only "Frete" and "Prazo" — no modes, no provider names
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FiLoader, FiPlus, FiX, FiRefreshCw } from 'react-icons/fi';
+import { FiPlus, FiX, FiRefreshCw } from 'react-icons/fi';
+import Spinner from './ui/Spinner';
 import toast from 'react-hot-toast';
 import { useStore } from '../context/StoreContext';
 import { useCatalog } from '../context/CatalogContext';
@@ -73,7 +74,6 @@ export default function ShippingSelector() {
       const info = await fetchCepInfo(norm);
       if (!info) {
         toast('CEP não encontrado na base dos Correios.', {
-          icon: '⚠️',
           style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
         });
         setShipping({ isLoading: false });
@@ -92,8 +92,7 @@ export default function ShippingSelector() {
       // Calculate shipping
       await runShippingCalc(norm, info.localidade, String(info.uf || '').toUpperCase());
     } catch {
-      toast('Erro ao consultar CEP. Tente novamente.', {
-        icon: '❌',
+      toast.error('Erro ao consultar CEP. Tente novamente.', {
         style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
       });
       setShipping({ isLoading: false, error: 'Erro ao consultar CEP.' });
@@ -170,7 +169,7 @@ export default function ShippingSelector() {
               className={`${inputCls} font-mono pr-10`}
             />
             {shipping.isLoading && (
-              <FiLoader size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-baby-accent animate-spin" />
+              <Spinner size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-baby-accent" />
             )}
           </div>
         </div>
@@ -282,7 +281,7 @@ export default function ShippingSelector() {
         <div className="bg-baby-pink/10 dark:bg-baby-accent/5 border border-baby-pink rounded-xl p-3 font-sans text-sm space-y-1">
           {shipping.isLoading ? (
             <div className="flex items-center gap-2 text-baby-text/50">
-              <FiLoader size={14} className="animate-spin" />
+              <Spinner size={14} />
               <span>Calculando frete…</span>
             </div>
           ) : shipping.error ? (

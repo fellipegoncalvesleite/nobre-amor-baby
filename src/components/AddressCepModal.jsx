@@ -12,7 +12,8 @@
  *   - offline → toast "Não foi possível buscar o CEP agora."
  */
 import { useState, useEffect, useRef } from 'react';
-import { FiX, FiSearch, FiLoader, FiMapPin } from 'react-icons/fi';
+import { FiX, FiSearch, FiMapPin } from 'react-icons/fi';
+import Spinner from './ui/Spinner';
 import toast from 'react-hot-toast';
 import { searchCepByAddress, formatCep } from '../utils/viacep';
 import { focusRing } from '../lib/ui';
@@ -61,9 +62,7 @@ export default function AddressCepModal({ isOpen, onClose, onSelectCep }) {
     const trimStreet = street.trim();
 
     if (trimUf.length !== 2 || trimCity.length < 2 || trimStreet.length < 3) {
-      toast('Preencha UF (2 letras), cidade e rua (mín. 3 letras).', {
-        icon: '⚠️', style: toastStyle,
-      });
+      toast('Preencha UF (2 letras), cidade e rua (mín. 3 letras).', { style: toastStyle });
       return;
     }
 
@@ -74,12 +73,10 @@ export default function AddressCepModal({ isOpen, onClose, onSelectCep }) {
       const { results } = await searchCepByAddress({ uf: trimUf, city: trimCity, street: trimStreet });
       setResults(results);
       if (results.length === 0) {
-        toast('Nenhum CEP encontrado para esse endereço.', { icon: '📭', style: toastStyle });
+        toast('Nenhum CEP encontrado para esse endereço.', { style: toastStyle });
       }
     } catch {
-      toast('Não foi possível buscar o CEP agora. Tente novamente.', {
-        icon: '❌', style: toastStyle,
-      });
+      toast.error('Não foi possível buscar o CEP agora. Tente novamente.', { style: toastStyle });
       setResults([]);
     } finally {
       setLoading(false);
@@ -192,7 +189,7 @@ export default function AddressCepModal({ isOpen, onClose, onSelectCep }) {
                        disabled:opacity-60 disabled:cursor-wait ${focusRing}`}
           >
             {loading ? (
-              <FiLoader size={16} className="animate-spin" />
+              <Spinner size={16} />
             ) : (
               <FiSearch size={16} />
             )}

@@ -383,7 +383,6 @@ export default function CheckoutPage() {
 
       if (data.warning) {
         toast('Pedido criado, mas a cobranca precisara ser refeita.', {
-          icon: '⚠️',
           style: toastStyle,
           duration: 4000,
         });

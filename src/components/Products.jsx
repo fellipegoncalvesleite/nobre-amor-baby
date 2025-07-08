@@ -11,14 +11,27 @@ const containerVariants = {
 };
 
 export default function Products() {
-  const { products, isLoading } = useCatalog();
-  /* Show up to 8 featured or public products on the home page */
+  const { products, homeSettings, isLoading } = useCatalog();
+  const {
+    featured_enabled: featuredEnabled = true,
+    featured_title: featuredTitle = 'Produtos em Destaque',
+    featured_order: featuredOrder = [],
+  } = homeSettings || {};
+
+  /* Show up to 8 featured products. Admin picks order via /admin/inicio; fallback to `featured` flag, then any public. */
   const featured = useMemo(() => {
     const pub = products.filter((p) => p.is_public !== false);
+    const byId = new Map(pub.map((p) => [String(p.id), p]));
+    const picked = featuredOrder
+      .map((id) => byId.get(String(id)))
+      .filter(Boolean);
+    if (picked.length >= 4) return picked.slice(0, 8);
     const starred = pub.filter((p) => p.featured);
-    return (starred.length >= 4 ? starred : pub).slice(0, 8);
-  }, [products]);
+    const fallback = (picked.length ? picked : starred.length ? starred : pub);
+    return fallback.slice(0, 8);
+  }, [products, featuredOrder]);
 
+  if (!featuredEnabled) return null;
   if (!isLoading && featured.length === 0) return null;
 
   return (
@@ -34,7 +47,7 @@ export default function Products() {
         >
           <div>
             <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl text-baby-text mb-2">
-              Produtos em Destaque
+              {featuredTitle}
             </h2>
             <p className="font-sans text-baby-text/60 text-lg">
               Peças selecionadas com muito carinho para o seu bebê

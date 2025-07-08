@@ -1,8 +1,40 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FiArrowRight } from 'react-icons/fi';
+import { useCatalog } from '../context/CatalogContext';
+import { formatPrice } from '../lib/ui';
+
+const FALLBACK_SLIDE = {
+  id: null,
+  name: 'Macacão Algodão Orgânico',
+  price: 129.9,
+  images: ['https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop'],
+};
 
 export default function Hero() {
+  const { products } = useCatalog();
+
+  const slides = useMemo(() => {
+    const featured = (products || []).filter(
+      (p) => p.isPublic !== false && p.inStock !== false && (p.images?.[0]),
+    );
+    const pool = featured.length ? featured : products?.filter((p) => p.images?.[0]) || [];
+    const picked = pool.slice(0, 6);
+    return picked.length ? picked : [FALLBACK_SLIDE];
+  }, [products]);
+
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (slides.length < 2) return;
+    const id = setInterval(() => setIndex((i) => (i + 1) % slides.length), 4500);
+    return () => clearInterval(id);
+  }, [slides.length]);
+
+  const current = slides[index % slides.length];
+  const currentHref = current?.id ? `/produto/${current.id}` : '/novidades';
+
   return (
     <section
       className="relative min-h-[90vh] flex items-center bg-linear-to-br
@@ -118,13 +150,21 @@ export default function Hero() {
           >
             <div className="relative aspect-4/5 max-w-lg mx-auto">
               <div className="absolute inset-0 bg-surface/40 rounded-[3rem] transform rotate-3 shadow-soft-lg" />
-              <div className="relative overflow-hidden rounded-[2.5rem] shadow-soft-lg bg-linear-to-br from-baby-pink-light to-surface">
-                <img
-                  src="https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop"
-                  alt="Bebê adorável usando roupas em tons pastéis da coleção Nobre Amor Baby"
-                  className="w-full h-full object-cover"
-                  loading="eager"
-                />
+              <div className="relative aspect-4/5 overflow-hidden rounded-[2.5rem] shadow-soft-lg bg-linear-to-br from-baby-pink-light to-surface">
+                <AnimatePresence initial={false} mode="wait">
+                  <motion.img
+                    key={current?.images?.[0] || 'fallback'}
+                    src={current?.images?.[0]}
+                    alt={current?.name ? `Produto ${current.name}` : 'Produto Nobre Amor Baby'}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    loading="eager"
+                    initial={{ opacity: 0, scale: 1.03 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.9, ease: 'easeInOut' }}
+                  />
+                </AnimatePresence>
+
                 {/* Floating badge */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -133,24 +173,41 @@ export default function Hero() {
                   className="absolute bottom-6 left-6 right-6 bg-surface/90 backdrop-blur-sm
                              rounded-2xl p-4 shadow-soft"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-serif text-baby-text text-lg">Macacão Algodão Orgânico</p>
-                      <p className="font-sans text-baby-accent text-sm">A partir de R$129,90</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-serif text-baby-text text-lg truncate">{current?.name}</p>
+                      {typeof current?.price === 'number' && (
+                        <p className="font-sans text-baby-accent text-sm">
+                          A partir de {formatPrice(current.price)}
+                        </p>
+                      )}
                     </div>
                     <Link
-                      to="/produto/1"
+                      to={currentHref}
                       className="bg-baby-text text-white dark:text-baby-cream p-3 min-w-11 min-h-11
                                  flex items-center justify-center rounded-full
                                  hover:bg-baby-accent active:scale-90
                                  transition-all duration-200
-                                 focus:outline-none focus:ring-2 focus:ring-baby-accent"
-                      aria-label="Ver Macacão Algodão Orgânico"
+                                 focus:outline-none focus:ring-2 focus:ring-baby-accent shrink-0"
+                      aria-label={current?.name ? `Ver ${current.name}` : 'Ver produtos'}
                     >
                       <FiArrowRight size={18} />
                     </Link>
                   </div>
                 </motion.div>
+
+                {slides.length > 1 && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {slides.map((_, i) => (
+                      <span
+                        key={i}
+                        className={`h-1.5 rounded-full transition-all ${
+                          i === index ? 'w-5 bg-baby-text' : 'w-1.5 bg-baby-text/30'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

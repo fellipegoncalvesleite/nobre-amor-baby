@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiArrowRight } from 'react-icons/fi';
@@ -14,9 +15,24 @@ const cardVariants = {
 };
 
 export default function Categories() {
-  const { collections } = useCatalog();
-  const categories = collections.filter((c) => c.is_active !== false);
+  const { collections, homeSettings } = useCatalog();
+  const {
+    collections_enabled: collectionsEnabled = true,
+    collections_title: collectionsTitle = 'Nossas Coleções',
+    collections_order: collectionsOrder = [],
+  } = homeSettings || {};
 
+  const categories = useMemo(() => {
+    const active = collections.filter((c) => c.is_active !== false);
+    if (!collectionsOrder.length) return active;
+    const byId = new Map(active.map((c) => [String(c.id), c]));
+    const picked = collectionsOrder
+      .map((id) => byId.get(String(id)))
+      .filter(Boolean);
+    return picked.length ? picked : active;
+  }, [collections, collectionsOrder]);
+
+  if (!collectionsEnabled) return null;
   if (categories.length === 0) return null;
 
   return (
@@ -31,7 +47,7 @@ export default function Categories() {
           className="text-center mb-16"
         >
           <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl text-baby-text mb-4">
-            Nossas Coleções
+            {collectionsTitle}
           </h2>
           <p className="font-sans text-baby-text/60 text-lg max-w-2xl mx-auto">
             Encontre peças encantadoras para cada fase do crescimento do seu bebê

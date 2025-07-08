@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiHeart,
   FiShoppingBag,
   FiChevronLeft,
+  FiChevronRight,
   FiMinus,
   FiPlus,
   FiCheck,
 } from 'react-icons/fi';
+import { FaWhatsapp } from 'react-icons/fa';
+import siteConfig from '../config/siteConfig';
 import toast from 'react-hot-toast';
 import { useCatalog } from '../context/CatalogContext';
 import { useStore } from '../context/StoreContext';
@@ -29,6 +32,18 @@ export default function ProductDetailPage() {
   const defaultSizeLabel = product?.sizeOptions?.[0]?.label ?? product?.sizes?.[0] ?? '';
   const [selectedSize, setSelectedSize] = useState(defaultSizeLabel);
   const [qty, setQty] = useState(1);
+  const [imageIndex, setImageIndex] = useState(0);
+
+  const images = product?.images?.length ? product.images : [];
+  const hasMultipleImages = images.length > 1;
+
+  useEffect(() => {
+    if (!hasMultipleImages) return;
+    const id = setInterval(() => {
+      setImageIndex((i) => (i + 1) % images.length);
+    }, 4500);
+    return () => clearInterval(id);
+  }, [hasMultipleImages, images.length]);
 
   if (!product) {
     return (
@@ -68,6 +83,20 @@ export default function ProductDetailPage() {
     const clampedQty = Math.min(qty, stockCount);
     addToCart(product.id, selectedSize, clampedQty);
     navigate('/carrinho');
+  };
+
+  const goPrevImage = () => setImageIndex((i) => (i - 1 + images.length) % images.length);
+  const goNextImage = () => setImageIndex((i) => (i + 1) % images.length);
+
+  const handleContactManager = () => {
+    const number = (siteConfig.whatsappNumber || '').replace(/\D/g, '');
+    if (!number) return;
+    const text = `Olá! Tenho uma dúvida sobre o produto "${product.name}".`;
+    window.open(
+      `https://wa.me/${number}?text=${encodeURIComponent(text)}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
   };
 
   const handleToggleWishlist = () => {
@@ -115,11 +144,57 @@ export default function ProductDetailPage() {
             transition={{ duration: 0.5 }}
           >
             <div className="relative aspect-4/5 rounded-2xl overflow-hidden bg-surface shadow-soft-lg">
-              <img
-                src={product.images[0]}
-                alt={product.description}
-                className={`w-full h-full object-cover${outOfStock ? ' grayscale opacity-60' : ''}`}
-              />
+              <AnimatePresence initial={false} mode="wait">
+                <motion.img
+                  key={images[imageIndex] || 'placeholder'}
+                  src={images[imageIndex]}
+                  alt={product.description}
+                  className={`absolute inset-0 w-full h-full object-cover${outOfStock ? ' grayscale opacity-60' : ''}`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.6, ease: 'easeInOut' }}
+                />
+              </AnimatePresence>
+
+              {hasMultipleImages && (
+                <>
+                  <button
+                    type="button"
+                    onClick={goPrevImage}
+                    aria-label="Imagem anterior"
+                    className={`absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center
+                                rounded-full bg-surface/80 backdrop-blur-sm text-baby-text shadow-soft
+                                hover:bg-surface transition-colors ${focusRing}`}
+                  >
+                    <FiChevronLeft size={20} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goNextImage}
+                    aria-label="Próxima imagem"
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center
+                                rounded-full bg-surface/80 backdrop-blur-sm text-baby-text shadow-soft
+                                hover:bg-surface transition-colors ${focusRing}`}
+                  >
+                    <FiChevronRight size={20} />
+                  </button>
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {images.map((_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setImageIndex(i)}
+                        aria-label={`Ir para imagem ${i + 1}`}
+                        className={`h-2 rounded-full transition-all ${
+                          i === imageIndex ? 'w-6 bg-baby-text' : 'w-2 bg-baby-text/40 hover:bg-baby-text/60'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
               {/* Tag — Esgotado overrides normal tag */}
               {(outOfStock || product.tag) && (
                 <span className={`absolute top-4 left-4 px-4 py-1.5 rounded-full font-sans text-sm font-medium ${outOfStock ? 'bg-gray-500 text-white' : 'bg-baby-text/80 text-white dark:text-baby-cream'}`}>
@@ -274,6 +349,18 @@ export default function ProductDetailPage() {
                 </>
               )}
             </div>
+
+            {/* Contact manager via WhatsApp */}
+            <button
+              type="button"
+              onClick={handleContactManager}
+              className={`inline-flex items-center justify-center gap-2 mb-4 px-5 py-3 rounded-full
+                         font-sans font-medium text-sm bg-[#25D366] text-white
+                         hover:bg-[#1ebe5b] active:scale-[0.97] transition-all ${focusRing} w-fit`}
+            >
+              <FaWhatsapp size={18} />
+              Falar com a loja sobre este produto
+            </button>
 
             {/* Wishlist toggle */}
             <button

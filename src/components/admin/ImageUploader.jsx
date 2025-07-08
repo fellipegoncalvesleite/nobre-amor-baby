@@ -22,12 +22,13 @@
  * TODO: Swap ImageUploader storage to Supabase Storage later (upload then store public URL)
  */
 import { useState, useRef, useCallback } from 'react';
-import { FiUpload, FiCamera, FiX, FiChevronUp, FiChevronDown, FiLoader, FiCrop } from 'react-icons/fi';
+import { FiUpload, FiCamera, FiX, FiChevronUp, FiChevronDown, FiCrop } from 'react-icons/fi';
+import Spinner from '../ui/Spinner';
 import toast from 'react-hot-toast';
 import { focusRing } from '../../lib/ui';
 import CropModal from './CropModal';
 
-const MAX_FILE_SIZE = 6 * 1024 * 1024; // 6MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB (resized down to MAX_DIMENSION before upload)
 const MAX_DIMENSION = 1600;
 const JPEG_QUALITY = 0.8;
 
@@ -126,7 +127,7 @@ export default function ImageUploader({
     const newImages = [];
     for (const file of toProcess) {
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`"${file.name}" excede 6MB. Escolha uma imagem menor.`, { style: toastStyle });
+        toast.error(`"${file.name}" excede 25MB. Escolha uma imagem menor.`, { style: toastStyle });
         continue;
       }
       if (!file.type.startsWith('image/')) {
@@ -143,8 +144,12 @@ export default function ImageUploader({
         }
         const id = generateId();
         newImages.push({ id, src: croppedDataUrl, alt: file.name, _file: file, _uploading: !!onUpload });
-      } catch {
-        toast.error(`Erro ao processar "${file.name}".`, { style: toastStyle });
+      } catch (err) {
+        toast.error(
+          `Não foi possível abrir "${file.name}". Tente outro formato (JPG, PNG ou WebP).`,
+          { style: toastStyle },
+        );
+        console.warn('[ImageUploader] resize/crop failed', err);
       }
     }
 
@@ -322,7 +327,7 @@ export default function ImageUploader({
                 {/* Uploading overlay */}
                 {isUploading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                    <FiLoader className="animate-spin text-white" size={20} />
+                    <Spinner size={20} className="text-white" />
                     <span className="sr-only">Enviando…</span>
                   </div>
                 )}

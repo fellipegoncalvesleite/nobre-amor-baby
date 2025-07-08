@@ -6,16 +6,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiShoppingBag } from 'react-icons/fi';
+import { FiShoppingBag, FiFolder, FiHome } from 'react-icons/fi';
 import { focusRing, btnSecondary } from '../lib/ui';
 import AdminProductsPage from './AdminProductsPage';
 import AdminCollectionsPage from './AdminCollectionsPage';
 import AdminHomePage from './AdminHomePage';
 
 const TABS = [
-  { key: 'produtos', label: 'Produtos', icon: '🛍️' },
-  { key: 'colecoes', label: 'Coleções', icon: '📁' },
-  { key: 'inicio', label: 'Página Inicial', icon: '🏠' },
+  { key: 'produtos', label: 'Produtos', Icon: FiShoppingBag },
+  { key: 'colecoes', label: 'Coleções', Icon: FiFolder },
+  { key: 'inicio', label: 'Página Inicial', Icon: FiHome },
 ];
 
 export default function AdminCatalogPage() {
@@ -61,21 +61,24 @@ export default function AdminCatalogPage() {
 
           {/* Tabs */}
           <div className="flex gap-1 bg-surface rounded-xl p-1 shadow-soft mb-6 overflow-x-auto">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-sans text-sm
-                           whitespace-nowrap transition-all ${focusRing}
-                           ${activeTab === tab.key
-                             ? 'bg-baby-pink/50 text-baby-text font-semibold shadow-sm'
-                             : 'text-baby-text/50 hover:text-baby-text hover:bg-baby-pink/20'}`}
-              >
-                <span>{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
+            {TABS.map((tab) => {
+              const TabIcon = tab.Icon;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-sans text-sm
+                             whitespace-nowrap transition-all ${focusRing}
+                             ${activeTab === tab.key
+                               ? 'bg-baby-pink/50 text-baby-text font-semibold shadow-sm'
+                               : 'text-baby-text/50 hover:text-baby-text hover:bg-baby-pink/20'}`}
+                >
+                  <TabIcon size={16} />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
           {/* Tab content — render inline without section wrapper */}

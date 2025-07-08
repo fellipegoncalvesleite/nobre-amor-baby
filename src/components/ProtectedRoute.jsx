@@ -13,7 +13,7 @@
  */
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { FiLoader } from 'react-icons/fi';
+import Spinner from './ui/Spinner';
 import { useAuth } from '../context/AuthContext';
 import { setAdminAccessToken } from '../lib/adminApi';
 import { saveReturnPath } from '../lib/authReturn';
@@ -30,7 +30,7 @@ export default function ProtectedRoute({ children, role }) {
   if (loading) {
     return (
       <section className="pt-24 pb-16 bg-baby-cream min-h-screen flex items-center justify-center">
-        <FiLoader size={28} className="animate-spin text-baby-accent" />
+        <Spinner size={28} className="text-baby-accent" />
       </section>
     );
   }

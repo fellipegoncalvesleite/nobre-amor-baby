@@ -5,7 +5,7 @@
  */
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiSettings } from 'react-icons/fi';
+import { FiSettings, FiPackage, FiShoppingBag, FiMail } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { focusRing, btnSecondary } from '../lib/ui';
 
@@ -56,7 +56,7 @@ export default function AdminDashboardPage() {
               className={`bg-surface rounded-2xl p-8 shadow-soft hover:ring-2 hover:ring-baby-accent
                          transition-all group flex flex-col items-center text-center ${focusRing}`}
             >
-              <span className="text-5xl mb-4">📦</span>
+              <FiPackage className="text-baby-accent mb-4" size={48} />
               <p className="font-serif text-xl text-baby-text group-hover:text-baby-accent transition-colors">
                 Pedidos
               </p>
@@ -71,7 +71,7 @@ export default function AdminDashboardPage() {
               className={`bg-surface rounded-2xl p-8 shadow-soft hover:ring-2 hover:ring-baby-accent
                          transition-all group flex flex-col items-center text-center ${focusRing}`}
             >
-              <span className="text-5xl mb-4">🛍️</span>
+              <FiShoppingBag className="text-baby-accent mb-4" size={48} />
               <p className="font-serif text-xl text-baby-text group-hover:text-baby-accent transition-colors">
                 Catálogo
               </p>
@@ -86,7 +86,7 @@ export default function AdminDashboardPage() {
               className={`bg-surface rounded-2xl p-8 shadow-soft hover:ring-2 hover:ring-baby-accent
                          transition-all group flex flex-col items-center text-center ${focusRing}`}
             >
-              <span className="text-5xl mb-4">✉️</span>
+              <FiMail className="text-baby-accent mb-4" size={48} />
               <p className="font-serif text-xl text-baby-text group-hover:text-baby-accent transition-colors">
                 Newsletter
               </p>

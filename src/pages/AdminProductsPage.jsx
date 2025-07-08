@@ -142,8 +142,38 @@ export default function AdminProductsPage({ embedded = false }) {
     setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  const handleImagesChange = (newImages) => {
-    setForm((prev) => ({ ...prev, images: newImages }));
+  const handleDiscountPctChange = (e) => {
+    const raw = e.target.value;
+    if (raw === '') {
+      setForm((prev) => ({ ...prev, oldPrice: '' }));
+      return;
+    }
+    const pct = Math.min(95, Math.max(0, parseFloat(raw) || 0));
+    const price = parseFloat(form.price);
+    if (!price || price <= 0) {
+      toast('Informe o preço atual antes de aplicar desconto.', { style: toastStyle });
+      return;
+    }
+    if (pct <= 0) {
+      setForm((prev) => ({ ...prev, oldPrice: '' }));
+      return;
+    }
+    const oldPrice = price / (1 - pct / 100);
+    setForm((prev) => ({ ...prev, oldPrice: oldPrice.toFixed(2) }));
+  };
+
+  const currentDiscountPct = (() => {
+    const price = parseFloat(form.price);
+    const old = parseFloat(form.oldPrice);
+    if (!price || !old || old <= price) return '';
+    return Math.round(((old - price) / old) * 100);
+  })();
+
+  const handleImagesChange = (next) => {
+    setForm((prev) => ({
+      ...prev,
+      images: typeof next === 'function' ? next(prev.images) : next,
+    }));
   };
 
   /* ── Size chip helpers ──────────────────────────── */
@@ -547,13 +577,39 @@ export default function AdminProductsPage({ embedded = false }) {
                       placeholder="Opcional"
                       className={`w-full rounded-xl border ${oldPriceError ? 'border-red-400' : 'border-baby-text/15 dark:border-gray-600'} bg-baby-cream dark:bg-gray-800 px-3 py-2.5
                                  font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`} />
-                    <p className="font-sans text-xs text-baby-text/50 dark:text-gray-400 mt-1">
-                      Se preenchido, será exibido riscado e o preço atual aparecerá como promocional.
-                    </p>
                     {oldPriceError && (
                       <p className="font-sans text-xs text-red-500 mt-0.5">{oldPriceError}</p>
                     )}
                   </div>
+                </div>
+
+                {/* Discount % shortcut — syncs with "Preço riscado" */}
+                <div>
+                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">
+                    Desconto (%)
+                  </label>
+                  <div className="relative max-w-40">
+                    <input
+                      type="number"
+                      min="0"
+                      max="95"
+                      step="1"
+                      value={currentDiscountPct}
+                      onChange={handleDiscountPctChange}
+                      placeholder="Ex: 20"
+                      className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600
+                                 bg-baby-cream dark:bg-gray-800 px-3 py-2.5 pr-8
+                                 font-sans text-sm text-baby-text dark:text-gray-100
+                                 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 font-sans text-sm text-baby-text/50">
+                      %
+                    </span>
+                  </div>
+                  <p className="font-sans text-xs text-baby-text/50 dark:text-gray-400 mt-1">
+                    O produto é marcado como promoção automaticamente e aparece em /promocoes com selo
+                    {' '}<span className="font-semibold">% OFF</span>.
+                  </p>
                 </div>
 
                 {/* Tag / Size group */}

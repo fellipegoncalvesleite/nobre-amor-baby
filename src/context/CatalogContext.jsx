@@ -131,9 +131,30 @@ function normalizeCollection(c) {
 
 const CatalogContext = createContext(null);
 
+const HOME_DEFAULTS = {
+  collections_enabled: true,
+  featured_enabled: true,
+  collections_title: 'Coleções',
+  featured_title: 'Destaques',
+  collections_order: [],
+  featured_order: [],
+};
+
+async function fetchHomeSettings() {
+  try {
+    const res = await fetch('/api/public?resource=home');
+    if (!res.ok) return HOME_DEFAULTS;
+    const data = await res.json();
+    return { ...HOME_DEFAULTS, ...data };
+  } catch {
+    return HOME_DEFAULTS;
+  }
+}
+
 export function CatalogProvider({ children }) {
   const [products, setProducts] = useState([]);
   const [collections, setCollections] = useState([]);
+  const [homeSettings, setHomeSettings] = useState(HOME_DEFAULTS);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState('seed');
@@ -159,10 +180,12 @@ export function CatalogProvider({ children }) {
     setIsLoading(true);
     setError(null);
     try {
-      const [prods, colls] = await Promise.all([
+      const [prods, colls, home] = await Promise.all([
         apiListProducts({}),
         apiListCollections(),
+        fetchHomeSettings(),
       ]);
+      setHomeSettings(home);
 
       if ((prods && prods.length > 0) || (colls && colls.length > 0)) {
         const normColls = (colls || []).map(normalizeCollection);
@@ -322,6 +345,7 @@ export function CatalogProvider({ children }) {
     () => ({
       products,
       collections,
+      homeSettings,
       isLoading,
       error,
       mode,
@@ -344,7 +368,7 @@ export function CatalogProvider({ children }) {
         upsertProduct({ ...existing, ...changes });
       },
     }),
-    [products, collections, isLoading, error, mode, getProductById, getProductBySlug, getCollectionBySlug,
+    [products, collections, homeSettings, isLoading, error, mode, getProductById, getProductBySlug, getCollectionBySlug,
      upsertProduct, removeProduct, upsertCollection, removeCollection,
      setStock, decrementStock, incrementStock, refresh, resetCatalog],
   );

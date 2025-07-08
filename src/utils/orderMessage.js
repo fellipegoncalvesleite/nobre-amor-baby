@@ -87,11 +87,11 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
   const prodMap = new Map((products || []).map((p) => [String(p.id), p]));
 
   // ── Title
-  lines.push(`🧸 Nobre Amor Baby — PEDIDO PAGO ${orderId}`);
+  lines.push(`Nobre Amor Baby — PEDIDO PAGO ${orderId}`);
   lines.push('');
 
   // ── Payment confirmed
-  lines.push('💳 PAGAMENTO CONFIRMADO');
+  lines.push('PAGAMENTO CONFIRMADO');
   lines.push(`• Método: ${methodLabel(payment.method)}`);
   lines.push(`• Valor pago: ${formatPrice(payment.paidTotalCents / 100)}`);
   lines.push(`• Frete pago: ${formatPrice(payment.paidShippingCents / 100)}`);
@@ -116,7 +116,7 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
   lines.push('');
 
   // ── Customer
-  lines.push('👤 CLIENTE');
+  lines.push('CLIENTE');
   const cName = customer?.name || user?.displayName || '';
   if (cName) lines.push(`• Nome: ${cName}`);
   if (customer?.phone) lines.push(`• WhatsApp: ${customer.phone}`);
@@ -124,7 +124,7 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
   lines.push('');
 
   // ── Address
-  lines.push('📍 ENDEREÇO DE ENTREGA');
+  lines.push('ENDEREÇO DE ENTREGA');
   if (address.cep) lines.push(`• CEP: ${address.cep}`);
   const streetLine = [address.street, address.number].filter(Boolean).join(', ');
   if (streetLine) lines.push(`• ${streetLine}`);
@@ -134,7 +134,7 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
   lines.push('');
 
   // ── Shipping
-  lines.push('🚚 FRETE');
+  lines.push('FRETE');
   if (shipping.feeCents != null) {
     lines.push(`• Valor: ${formatPrice(shipping.feeCents / 100)}`);
   }
@@ -144,7 +144,7 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
   lines.push('');
 
   // ── Items
-  lines.push('📋 ITENS');
+  lines.push('ITENS');
   const enriched = cart.map((ci) => {
     const p = prodMap.get(String(ci.id));
     return p ? { ...ci, product: p } : null;
@@ -166,7 +166,7 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
     (sum, i) => sum + Math.round(i.product.price * 100) * i.qty, 0,
   );
   const shippingCents = payment.paidShippingCents || shipping.feeCents || 0;
-  lines.push('💰 TOTAIS');
+  lines.push('TOTAIS');
   lines.push(`• Subtotal: ${formatPrice(subtotalCents / 100)}`);
   lines.push(`• Frete: ${formatPrice(shippingCents / 100)}`);
   lines.push(`• Total pago: ${formatPrice(payment.paidTotalCents / 100)}`);
@@ -174,18 +174,18 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
   // Mismatch warning
   const expectedCents = subtotalCents + shippingCents;
   if (payment.paidTotalCents !== expectedCents) {
-    lines.push(`⚠️ Valor informado difere do calculado (${formatPrice(expectedCents / 100)})`);
+    lines.push(`ATENÇÃO: Valor informado difere do calculado (${formatPrice(expectedCents / 100)})`);
   }
   lines.push('');
 
   // ── Notes
   if (customer?.message) {
-    lines.push(`📝 Observações: ${customer.message}`);
+    lines.push(`Observações: ${customer.message}`);
     lines.push('');
   }
 
   // ── Footer
-  lines.push('📦 Por favor, confirme o envio e envie o rastreio quando postar.');
+  lines.push('Por favor, confirme o envio e envie o rastreio quando postar.');
 
   return lines.join('\n');
 }

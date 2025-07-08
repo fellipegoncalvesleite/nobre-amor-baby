@@ -67,8 +67,11 @@ export default function AdminCollectionsPage({ embedded = false }) {
     setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
-  const handleImagesChange = (newImages) => {
-    setForm((prev) => ({ ...prev, images: newImages }));
+  const handleImagesChange = (next) => {
+    setForm((prev) => ({
+      ...prev,
+      images: typeof next === 'function' ? next(prev.images) : next,
+    }));
   };
 
   const handleUpload = async (file) => {
