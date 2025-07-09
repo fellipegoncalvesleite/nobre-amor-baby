@@ -9,7 +9,7 @@ const FALLBACK_SLIDE = {
   id: null,
   name: 'Macacão Algodão Orgânico',
   price: 129.9,
-  images: ['https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop'],
+  images: ['https://picsum.photos/seed/nobre-amor-hero/600/750'],
 };
 
 export default function Hero() {

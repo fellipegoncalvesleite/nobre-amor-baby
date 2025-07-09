@@ -6,7 +6,7 @@ const categories = [
     name: 'Recém-nascido (RN)',
     label: 'Recém-nascido',
     description: 'Para o seu pequeno tesouro',
-    image: 'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=400&h=500&fit=crop',
+    image: 'https://picsum.photos/seed/cat-recem-nascido/400/500',
   },
   {
     id: '0-3m',
@@ -14,7 +14,7 @@ const categories = [
     name: '0-3 Meses',
     label: '0-3 Meses',
     description: 'Coleção primeiros sorrisos',
-    image: 'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=400&h=500&fit=crop',
+    image: 'https://picsum.photos/seed/cat-0-3m/400/500',
   },
   {
     id: '3-6m',
@@ -22,7 +22,7 @@ const categories = [
     name: '3-6 Meses',
     label: '3-6 Meses',
     description: 'Aventuras em crescimento',
-    image: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=400&h=500&fit=crop',
+    image: 'https://picsum.photos/seed/cat-3-6m/400/500',
   },
   {
     id: '6-12m',
@@ -30,7 +30,7 @@ const categories = [
     name: '6-12 Meses',
     label: '6-12 Meses',
     description: 'Estilos para pequenos exploradores',
-    image: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=400&h=500&fit=crop',
+    image: 'https://picsum.photos/seed/cat-6-12m/400/500',
   },
   {
     id: 'essenciais',
@@ -38,7 +38,7 @@ const categories = [
     name: 'Essenciais',
     label: 'Essenciais',
     description: 'Básicos indispensáveis',
-    image: 'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=400&h=500&fit=crop',
+    image: 'https://picsum.photos/seed/cat-essenciais/400/500',
   },
   {
     id: 'presentes',
@@ -46,7 +46,7 @@ const categories = [
     name: 'Presentes',
     label: 'Presentes',
     description: 'Presentes perfeitos',
-    image: 'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=400&h=500&fit=crop',
+    image: 'https://picsum.photos/seed/cat-presentes/400/500',
   },
 ];
 

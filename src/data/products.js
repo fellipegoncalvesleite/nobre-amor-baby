@@ -38,9 +38,9 @@ const products = [
     isNew: false,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/macacao-algodao-organico-1/600/750',
+      'https://picsum.photos/seed/macacao-algodao-organico-2/600/750',
+      'https://picsum.photos/seed/macacao-algodao-organico-3/600/750',
     ],
     description: 'Macacão de algodão orgânico macio, perfeito para recém-nascidos',
     details: [
@@ -74,9 +74,9 @@ const products = [
     isNew: true,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/casaquinho-de-trico-1/600/750',
+      'https://picsum.photos/seed/casaquinho-de-trico-2/600/750',
+      'https://picsum.photos/seed/casaquinho-de-trico-3/600/750',
     ],
     description: 'Casaquinho de tricô aconchegante em cores pastéis suaves',
     details: [
@@ -108,9 +108,9 @@ const products = [
     isNew: false,
     isPromo: true,
     images: [
-      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/vestido-floral-1/600/750',
+      'https://picsum.photos/seed/vestido-floral-2/600/750',
+      'https://picsum.photos/seed/vestido-floral-3/600/750',
     ],
     description: 'Vestido floral adorável para ocasiões especiais',
     details: [
@@ -141,9 +141,9 @@ const products = [
     isNew: false,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/kit-body-3-pecas-1/600/750',
+      'https://picsum.photos/seed/kit-body-3-pecas-2/600/750',
+      'https://picsum.photos/seed/kit-body-3-pecas-3/600/750',
     ],
     description: 'Conjunto com 3 bodies de algodão macio',
     details: [
@@ -175,9 +175,9 @@ const products = [
     isNew: false,
     isPromo: true,
     images: [
-      'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/pijama-com-pezinho-1/600/750',
+      'https://picsum.photos/seed/pijama-com-pezinho-2/600/750',
+      'https://picsum.photos/seed/pijama-com-pezinho-3/600/750',
     ],
     description: 'Pijama quentinho com pezinho para noites tranquilas',
     details: [
@@ -209,9 +209,9 @@ const products = [
     isNew: true,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/touca-com-renda-1/600/750',
+      'https://picsum.photos/seed/touca-com-renda-2/600/750',
+      'https://picsum.photos/seed/touca-com-renda-3/600/750',
     ],
     description: 'Touca delicada com acabamento em renda',
     details: [
@@ -242,9 +242,9 @@ const products = [
     isNew: false,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/kit-presente-bem-vindo-bebe-1/600/750',
+      'https://picsum.photos/seed/kit-presente-bem-vindo-bebe-2/600/750',
+      'https://picsum.photos/seed/kit-presente-bem-vindo-bebe-3/600/750',
     ],
     description: 'Kit presente especial para recém-nascidos',
     details: [
@@ -275,9 +275,9 @@ const products = [
     isNew: false,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/manta-de-bambu-1/600/750',
+      'https://picsum.photos/seed/manta-de-bambu-2/600/750',
+      'https://picsum.photos/seed/manta-de-bambu-3/600/750',
     ],
     description: 'Manta de musselina de bambu ultra macia',
     details: [
@@ -308,9 +308,9 @@ const products = [
     isNew: false,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/calcinha-com-babado-1/600/750',
+      'https://picsum.photos/seed/calcinha-com-babado-2/600/750',
+      'https://picsum.photos/seed/calcinha-com-babado-3/600/750',
     ],
     description: 'Calcinha adorável com babados para brincar',
     details: ['Algodão macio com elastano', 'Babado duplo com acabamento'],
@@ -338,9 +338,9 @@ const products = [
     isNew: true,
     isPromo: true,
     images: [
-      'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/camisa-gola-peter-pan-1/600/750',
+      'https://picsum.photos/seed/camisa-gola-peter-pan-2/600/750',
+      'https://picsum.photos/seed/camisa-gola-peter-pan-3/600/750',
     ],
     description: 'Camisa clássica com gola Peter Pan',
     details: [
@@ -372,9 +372,9 @@ const products = [
     isNew: false,
     isPromo: false,
     images: [
-      'https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1504151932400-72d4384f04b3?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1587064712555-6e5eb38c1b6b?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/kit-sapatinhos-de-trico-1/600/750',
+      'https://picsum.photos/seed/kit-sapatinhos-de-trico-2/600/750',
+      'https://picsum.photos/seed/kit-sapatinhos-de-trico-3/600/750',
     ],
     description: 'Sapatinhos de tricô feitos à mão em várias cores',
     details: [
@@ -407,9 +407,9 @@ const products = [
     isNew: false,
     isPromo: true,
     images: [
-      'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=600&h=750&fit=crop',
-      'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&h=750&fit=crop',
+      'https://picsum.photos/seed/kit-presente-primeiro-ano-1/600/750',
+      'https://picsum.photos/seed/kit-presente-primeiro-ano-2/600/750',
+      'https://picsum.photos/seed/kit-presente-primeiro-ano-3/600/750',
     ],
     description: 'Coleção completa de presentes para o primeiro ano',
     details: [
