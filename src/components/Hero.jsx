@@ -13,16 +13,25 @@ const FALLBACK_SLIDE = {
 };
 
 export default function Hero() {
-  const { products } = useCatalog();
+  const { products, homeSettings } = useCatalog();
+  const featuredOrder = homeSettings?.featured_order || [];
 
   const slides = useMemo(() => {
-    const featured = (products || []).filter(
-      (p) => p.isPublic !== false && p.inStock !== false && (p.images?.[0]),
+    const pub = (products || []).filter(
+      (p) => p.is_public !== false && p.images?.[0],
     );
-    const pool = featured.length ? featured : products?.filter((p) => p.images?.[0]) || [];
-    const picked = pool.slice(0, 6);
-    return picked.length ? picked : [FALLBACK_SLIDE];
-  }, [products]);
+    const byId = new Map(pub.map((p) => [String(p.id), p]));
+    // 1) Manager-curated list from /admin/inicio → Destaques
+    const curated = featuredOrder
+      .map((id) => byId.get(String(id)))
+      .filter(Boolean);
+    if (curated.length) return curated.slice(0, 6);
+    // 2) Fallback to products flagged `featured`
+    const starred = pub.filter((p) => p.featured);
+    if (starred.length) return starred.slice(0, 6);
+    // 3) Last-resort: any public product, or the static fallback
+    return pub.slice(0, 6).length ? pub.slice(0, 6) : [FALLBACK_SLIDE];
+  }, [products, featuredOrder]);
 
   const [index, setIndex] = useState(0);
 

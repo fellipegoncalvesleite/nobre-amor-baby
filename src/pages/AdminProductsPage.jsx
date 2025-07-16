@@ -524,10 +524,10 @@ export default function AdminProductsPage({ embedded = false }) {
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-surface rounded-2xl shadow-xl w-full max-w-2xl p-6 my-4"
+              className="bg-surface rounded-2xl shadow-xl w-full max-w-3xl p-6 my-4"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-serif text-lg text-baby-text dark:text-gray-100">
+                <h3 className="font-serif text-xl text-baby-text dark:text-gray-100">
                   {editingId ? 'Editar produto' : 'Novo produto'}
                 </h3>
                 <button type="button" onClick={() => setModalOpen(false)}
@@ -537,106 +537,122 @@ export default function AdminProductsPage({ embedded = false }) {
                 </button>
               </div>
 
-              <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-                {/* Name */}
-                <div>
-                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Nome *</label>
-                  <input name="name" value={form.name} onChange={handleChange}
-                    className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
-                               font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`} />
-                </div>
+              <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
 
-                {/* Slug */}
-                <div>
-                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Slug (auto se vazio)</label>
-                  <input name="slug" value={form.slug} onChange={handleChange}
-                    placeholder="ex: macacao-algodao"
-                    className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
-                               font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`} />
-                </div>
+                {/* ── SEÇÃO: Informações básicas ── */}
+                <section className="space-y-3">
+                  <h4 className="font-serif text-base text-baby-accent dark:text-baby-pink border-b border-baby-pink/40 dark:border-gray-700 pb-1">
+                    Informações básicas
+                  </h4>
 
-                {/* Description */}
-                <div>
-                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Descrição</label>
-                  <textarea name="description" value={form.description} onChange={handleChange} rows={2}
-                    className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
-                               font-sans text-sm text-baby-text dark:text-gray-100 resize-y ${focusRing}`} />
-                </div>
-
-                {/* Price / Old price */}
-                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Preço (R$) *</label>
-                    <input name="price" type="number" step="0.01" min="0" value={form.price} onChange={handleChange}
+                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Nome do produto *</label>
+                    <input name="name" value={form.name} onChange={handleChange}
+                      placeholder="Ex: Macacão de algodão orgânico"
                       className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
-                                 font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`} />
+                                 font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`} />
                   </div>
+
                   <div>
-                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Preço riscado (promoção)</label>
+                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Descrição</label>
+                    <textarea name="description" value={form.description} onChange={handleChange} rows={3}
+                      placeholder="Conte sobre o tecido, o caimento, como é vestir…"
+                      className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                                 font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 resize-y ${focusRing}`} />
+                  </div>
+
+                  <div>
+                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Link curto (opcional)</label>
+                    <input name="slug" value={form.slug} onChange={handleChange}
+                      placeholder="Deixe vazio para gerar automaticamente"
+                      className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                                 font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`} />
+                    <p className="font-sans text-xs text-baby-text/50 dark:text-gray-400 mt-1">
+                      Aparece no endereço da página (ex: /produto/<em>macacao-algodao</em>).
+                    </p>
+                  </div>
+                </section>
+
+                {/* ── SEÇÃO: Preço e promoção ── */}
+                <section className="space-y-3">
+                  <h4 className="font-serif text-base text-baby-accent dark:text-baby-pink border-b border-baby-pink/40 dark:border-gray-700 pb-1">
+                    Preço e promoção
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Preço atual (R$) *</label>
+                      <input name="price" type="number" step="0.01" min="0" value={form.price} onChange={handleChange}
+                        placeholder="129.90"
+                        className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                                   font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 ${focusRing}`} />
+                    </div>
+                    <div>
+                      <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Desconto (%)</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="95"
+                          step="1"
+                          value={currentDiscountPct}
+                          onChange={handleDiscountPctChange}
+                          placeholder="Ex: 20"
+                          className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600
+                                     bg-baby-cream dark:bg-gray-800 px-3 py-2.5 pr-8
+                                     font-sans text-sm text-baby-text dark:text-gray-100
+                                     placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 font-sans text-sm text-baby-text/50">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Preço riscado (antes do desconto)</label>
                     <input name="oldPrice" type="number" step="0.01" min="0" value={form.oldPrice} onChange={handleChange}
-                      placeholder="Opcional"
+                      placeholder="Preenchido automaticamente pelo desconto"
                       className={`w-full rounded-xl border ${oldPriceError ? 'border-red-400' : 'border-baby-text/15 dark:border-gray-600'} bg-baby-cream dark:bg-gray-800 px-3 py-2.5
                                  font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`} />
                     {oldPriceError && (
                       <p className="font-sans text-xs text-red-500 mt-0.5">{oldPriceError}</p>
                     )}
+                    <p className="font-sans text-xs text-baby-text/50 dark:text-gray-400 mt-1">
+                      Quando há desconto, o produto aparece automaticamente em <strong>/promocoes</strong> com o selo <span className="font-semibold">% OFF</span>.
+                    </p>
                   </div>
-                </div>
 
-                {/* Discount % shortcut — syncs with "Preço riscado" */}
-                <div>
-                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">
-                    Desconto (%)
-                  </label>
-                  <div className="relative max-w-40">
-                    <input
-                      type="number"
-                      min="0"
-                      max="95"
-                      step="1"
-                      value={currentDiscountPct}
-                      onChange={handleDiscountPctChange}
-                      placeholder="Ex: 20"
-                      className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600
-                                 bg-baby-cream dark:bg-gray-800 px-3 py-2.5 pr-8
-                                 font-sans text-sm text-baby-text dark:text-gray-100
-                                 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`}
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 font-sans text-sm text-baby-text/50">
-                      %
-                    </span>
-                  </div>
-                  <p className="font-sans text-xs text-baby-text/50 dark:text-gray-400 mt-1">
-                    O produto é marcado como promoção automaticamente e aparece em /promocoes com selo
-                    {' '}<span className="font-semibold">% OFF</span>.
-                  </p>
-                </div>
-
-                {/* Tag / Size group */}
-                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Tag</label>
+                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Etiqueta especial (opcional)</label>
                     <input name="tag" value={form.tag} onChange={handleChange}
-                      placeholder="Ex: Novo, Mais Vendido"
+                      placeholder="Ex: Novo, Mais Vendido, Edição Limitada"
                       className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
                                  font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`} />
                   </div>
+                </section>
+
+                {/* ── SEÇÃO: Tamanhos ── */}
+                <section className="space-y-3">
+                  <h4 className="font-serif text-base text-baby-accent dark:text-baby-pink border-b border-baby-pink/40 dark:border-gray-700 pb-1">
+                    Tamanhos
+                  </h4>
+
                   <div>
-                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Grupo de tamanho *</label>
+                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Tipo de tamanho *</label>
                     <select name="sizeGroup" value={form.sizeGroup} onChange={handleChange}
                       className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
                                  font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`}>
                       {SIZE_GROUPS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
                     </select>
                   </div>
-                </div>
 
-                {/* Size options — chip selector */}
-                <div>
-                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Opções de tamanho</label>
+                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block">Tamanhos disponíveis</label>
+                  <p className="font-sans text-xs text-baby-text/50 dark:text-gray-400 -mt-2">
+                    Clique para selecionar os tamanhos que você tem em estoque.
+                  </p>
 
                   {/* Preset chips */}
-                  <div className="flex flex-wrap gap-1.5 mt-1">
+                  <div className="flex flex-wrap gap-1.5">
                     {(SIZE_PRESETS[form.sizeGroup] || []).map((size) => {
                       const active = selectedSizes.includes(size);
                       return (
@@ -697,65 +713,93 @@ export default function AdminProductsPage({ embedded = false }) {
                       </button>
                     </div>
                   )}
-                </div>
+                </section>
 
-                {/* Stock / Weight */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Estoque (unidades)</label>
-                    <input name="stockCount" type="number" min="0" value={form.stockCount} onChange={handleChange}
-                      className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
-                                 font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`} />
+                {/* ── SEÇÃO: Estoque e envio ── */}
+                <section className="space-y-3">
+                  <h4 className="font-serif text-base text-baby-accent dark:text-baby-pink border-b border-baby-pink/40 dark:border-gray-700 pb-1">
+                    Estoque e envio
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Quantidade em estoque</label>
+                      <input name="stockCount" type="number" min="0" value={form.stockCount} onChange={handleChange}
+                        className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                                   font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`} />
+                    </div>
+                    <div>
+                      <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Peso da peça (g)</label>
+                      <input name="weightGrams" type="number" min="0" value={form.weightGrams} onChange={handleChange}
+                        className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                                   font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`} />
+                      <p className="font-sans text-xs text-baby-text/50 dark:text-gray-400 mt-1">Usado no cálculo do frete.</p>
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <label className="flex items-center gap-2 font-sans text-sm text-baby-text dark:text-gray-200 cursor-pointer">
+                        <input type="checkbox" name="inStock" checked={form.inStock} onChange={handleChange}
+                          className="rounded border-baby-text/30 dark:border-gray-600" />
+                        Disponível para venda
+                      </label>
+                    </div>
                   </div>
+
                   <div>
-                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Peso (gramas)</label>
-                    <input name="weightGrams" type="number" min="0" value={form.weightGrams} onChange={handleChange}
+                    <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Coleção</label>
+                    <select name="collectionId" value={form.collectionId} onChange={handleChange}
                       className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
-                                 font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`} />
+                                 font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`}>
+                      <option value="">Nenhuma coleção</option>
+                      {collections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
                   </div>
-                  <div className="flex items-end pb-1">
-                    <label className="flex items-center gap-2 font-sans text-sm text-baby-text dark:text-gray-200 cursor-pointer">
-                      <input type="checkbox" name="inStock" checked={form.inStock} onChange={handleChange}
-                        className="rounded border-baby-text/30 dark:border-gray-600" />
-                      Em estoque
+                </section>
+
+                {/* ── SEÇÃO: Visibilidade ── */}
+                <section className="space-y-3">
+                  <h4 className="font-serif text-base text-baby-accent dark:text-baby-pink border-b border-baby-pink/40 dark:border-gray-700 pb-1">
+                    Visibilidade na loja
+                  </h4>
+
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-2 font-sans text-sm text-baby-text dark:text-gray-200 cursor-pointer">
+                      <input type="checkbox" name="isPublic" checked={form.isPublic} onChange={handleChange}
+                        className="rounded border-baby-text/30 dark:border-gray-600 mt-0.5" />
+                      <span>
+                        <span className="font-medium">Mostrar na loja</span>
+                        <span className="block text-xs text-baby-text/50 dark:text-gray-400">
+                          Quando desmarcado, o produto fica salvo mas não aparece para os clientes.
+                        </span>
+                      </span>
+                    </label>
+
+                    <label className="flex items-start gap-2 font-sans text-sm text-baby-text dark:text-gray-200 cursor-pointer">
+                      <input type="checkbox" name="featured" checked={form.featured} onChange={handleChange}
+                        className="rounded border-baby-text/30 dark:border-gray-600 mt-0.5" />
+                      <span>
+                        <span className="font-medium">Marcar como destaque</span>
+                        <span className="block text-xs text-baby-text/50 dark:text-gray-400">
+                          Usado como reserva — a ordem principal dos destaques da home é definida em <strong>Início → Destaques</strong>.
+                        </span>
+                      </span>
                     </label>
                   </div>
-                </div>
+                </section>
 
-                {/* Collection */}
-                <div>
-                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Coleção</label>
-                  <select name="collectionId" value={form.collectionId} onChange={handleChange}
-                    className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
-                               font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`}>
-                    <option value="">Nenhuma</option>
-                    {collections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-
-                {/* Toggles */}
-                <div className="flex flex-wrap gap-4">
-                  <label className="flex items-center gap-2 font-sans text-sm text-baby-text dark:text-gray-200 cursor-pointer">
-                    <input type="checkbox" name="featured" checked={form.featured} onChange={handleChange}
-                      className="rounded border-baby-text/30 dark:border-gray-600" />
-                    Destaque
-                  </label>
-                  <label className="flex items-center gap-2 font-sans text-sm text-baby-text dark:text-gray-200 cursor-pointer">
-                    <input type="checkbox" name="isPublic" checked={form.isPublic} onChange={handleChange}
-                      className="rounded border-baby-text/30 dark:border-gray-600" />
-                    Público (visível na loja)
-                  </label>
-                </div>
-
-                {/* Images */}
-                <ImageUploader
-                  label="Fotos do produto"
-                  images={form.images}
-                  onChange={handleImagesChange}
-                  onUpload={handleUpload}
-                  maxImages={8}
-                  aspectHint="A primeira foto será a capa."
-                />
+                {/* ── SEÇÃO: Fotos ── */}
+                <section className="space-y-3">
+                  <h4 className="font-serif text-base text-baby-accent dark:text-baby-pink border-b border-baby-pink/40 dark:border-gray-700 pb-1">
+                    Fotos
+                  </h4>
+                  <ImageUploader
+                    label="Fotos do produto"
+                    images={form.images}
+                    onChange={handleImagesChange}
+                    onUpload={handleUpload}
+                    maxImages={8}
+                    aspectHint="A primeira foto será a capa. Você pode arrastar para reordenar."
+                  />
+                </section>
               </div>
 
               {/* Actions */}
