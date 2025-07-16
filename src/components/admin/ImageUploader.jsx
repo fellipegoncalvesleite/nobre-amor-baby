@@ -143,7 +143,7 @@ export default function ImageUploader({
           continue;
         }
         const id = generateId();
-        newImages.push({ id, src: croppedDataUrl, alt: file.name, _file: file, _uploading: !!onUpload });
+        newImages.push({ id, src: croppedDataUrl, alt: file.name, _filename: file.name, _uploading: !!onUpload });
       } catch (err) {
         toast.error(
           `Não foi possível abrir "${file.name}". Tente outro formato (JPG, PNG ou WebP).`,
@@ -163,14 +163,19 @@ export default function ImageUploader({
       for (const img of newImages) {
         setUploading((prev) => ({ ...prev, [img.id]: true }));
         try {
-          const url = await onUpload(img._file);
+          const url = await onUpload(img.src, img._filename);
           if (url) {
             // Replace src with uploaded URL
             onChange((prev) =>
-              prev.map((p) => (p.id === img.id ? { ...p, src: url, _uploading: false, _file: undefined } : p)),
+              prev.map((p) => (p.id === img.id ? { ...p, src: url, _uploading: false, _filename: undefined } : p)),
             );
+          } else {
+            // Upload returned no URL — drop this preview so payload doesn't save a data: URL
+            onChange((prev) => prev.filter((p) => p.id !== img.id));
+            toast.error(`Falha ao enviar "${img.alt}".`, { style: toastStyle });
           }
         } catch (err) {
+          onChange((prev) => prev.filter((p) => p.id !== img.id));
           toast.error(`Falha ao enviar "${img.alt}": ${err.message}`, { style: toastStyle });
         } finally {
           setUploading((prev) => ({ ...prev, [img.id]: false }));

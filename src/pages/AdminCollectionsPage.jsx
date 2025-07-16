@@ -74,8 +74,8 @@ export default function AdminCollectionsPage({ embedded = false }) {
     }));
   };
 
-  const handleUpload = async (file) => {
-    const url = await uploadImage(file, 'collection');
+  const handleUpload = async (dataUrlOrFile, filename) => {
+    const url = await uploadImage(dataUrlOrFile, 'collection', filename);
     return url;
   };
 

@@ -214,8 +214,8 @@ export default function AdminProductsPage({ embedded = false }) {
       ? 'O preço riscado deve ser maior que o preço atual.'
       : '';
 
-  const handleUpload = async (file) => {
-    const url = await uploadImage(file, 'product');
+  const handleUpload = async (dataUrlOrFile, filename) => {
+    const url = await uploadImage(dataUrlOrFile, 'product', filename);
     return url;
   };
 

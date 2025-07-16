@@ -21,10 +21,26 @@ const headers = (extra = {}) => ({
 
 async function request(url, options = {}) {
   const res = await fetch(url, { headers: headers(), ...options });
-  const data = await res.json();
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // Non-JSON response (e.g. Vercel 413 "Request entity too large" HTML page).
+    if (!res.ok) {
+      const friendly =
+        res.status === 413
+          ? 'Imagem muito grande. Tente uma foto menor.'
+          : `Erro ${res.status} no servidor.`;
+      const err = new Error(friendly);
+      err.code = `http_${res.status}`;
+      throw err;
+    }
+    return null;
+  }
   if (!res.ok) {
-    const err = new Error(data.message || 'Erro na requisição');
-    err.code = data.error;
+    const err = new Error(data?.message || `Erro ${res.status} na requisição`);
+    err.code = data?.error;
     throw err;
   }
   return data;
@@ -92,27 +108,36 @@ export async function deleteCollection(id) {
 /* ── Upload ───────────────────────────────────────── */
 
 /**
- * Upload an image file to Supabase Storage via serverless proxy.
- * @param {File} file — image file
+ * Upload an image to Supabase Storage via serverless proxy.
+ *
+ * Accepts either a File (reads as data URL) or an already-built data URL string.
+ * Prefer passing the already resized + cropped data URL from ImageUploader —
+ * raw files can easily blow past Vercel's 4.5MB request limit.
+ *
+ * @param {File|string} input — File or data URL
  * @param {"product"|"collection"} kind
+ * @param {string} [filename]
  * @returns {Promise<string>} — public URL
  */
-export async function uploadImage(file, kind = 'product') {
-  // Read file as data URL (base64)
-  const dataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
-    reader.readAsDataURL(file);
-  });
+export async function uploadImage(input, kind = 'product', filename) {
+  let dataUrl;
+  let name = filename;
+  if (typeof input === 'string') {
+    dataUrl = input;
+    if (!name) name = `upload-${Date.now()}.jpg`;
+  } else {
+    if (!name) name = input.name;
+    dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+      reader.readAsDataURL(input);
+    });
+  }
 
   const data = await request('/api/admin?resource=upload', {
     method: 'POST',
-    body: JSON.stringify({
-      file: dataUrl,
-      kind,
-      filename: file.name,
-    }),
+    body: JSON.stringify({ file: dataUrl, kind, filename: name }),
   });
   return data.url;
 }
