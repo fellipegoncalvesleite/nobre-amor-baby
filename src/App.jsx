@@ -20,7 +20,6 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminOrdersPage from './pages/AdminOrdersPage';
 import AdminOrderDetailPage from './pages/AdminOrderDetailPage';
 import AdminCatalogPage from './pages/AdminCatalogPage';
-import AdminNewsletterPage from './pages/AdminNewsletterPage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 import MeusPedidosPage from './pages/MeusPedidosPage';
 import MinhaContaPage from './pages/MinhaContaPage';
@@ -86,7 +85,6 @@ function App() {
           <Route path="/admin/pedidos" element={<ProtectedRoute role="manager"><AdminOrdersPage /></ProtectedRoute>} />
           <Route path="/admin/pedidos/:orderCode" element={<ProtectedRoute role="manager"><AdminOrderDetailPage /></ProtectedRoute>} />
           <Route path="/admin/catalogo" element={<ProtectedRoute role="manager"><AdminCatalogPage /></ProtectedRoute>} />
-          <Route path="/admin/newsletter" element={<ProtectedRoute role="manager"><AdminNewsletterPage /></ProtectedRoute>} />
           <Route path="/admin/produtos" element={<Navigate to="/admin/catalogo?tab=produtos" replace />} />
           <Route path="/admin/colecoes-gerenciar" element={<Navigate to="/admin/catalogo?tab=colecoes" replace />} />
           <Route path="/admin/inicio" element={<Navigate to="/admin/catalogo?tab=inicio" replace />} />

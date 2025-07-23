@@ -5,7 +5,7 @@
  */
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiSettings, FiPackage, FiShoppingBag, FiMail } from 'react-icons/fi';
+import { FiSettings, FiPackage, FiShoppingBag } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { focusRing, btnSecondary } from '../lib/ui';
 
@@ -80,20 +80,6 @@ export default function AdminDashboardPage() {
               </p>
             </Link>
 
-            {/* Newsletter */}
-            <Link
-              to="/admin/newsletter"
-              className={`bg-surface rounded-2xl p-8 shadow-soft hover:ring-2 hover:ring-baby-accent
-                         transition-all group flex flex-col items-center text-center ${focusRing}`}
-            >
-              <FiMail className="text-baby-accent mb-4" size={48} />
-              <p className="font-serif text-xl text-baby-text group-hover:text-baby-accent transition-colors">
-                Newsletter
-              </p>
-              <p className="font-sans text-sm text-baby-text/50 mt-2 leading-relaxed">
-                Ver e exportar os inscritos na lista de e-mails
-              </p>
-            </Link>
           </div>
 
           {/* Back link */}

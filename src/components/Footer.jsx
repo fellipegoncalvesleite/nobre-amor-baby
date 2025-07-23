@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -8,7 +7,6 @@ import {
   FiMapPin,
   FiPhone,
 } from 'react-icons/fi';
-import toast from 'react-hot-toast';
 import siteConfig from '../config/siteConfig';
 
 const footerLinks = {
@@ -34,107 +32,36 @@ const socialEntries = [
   { name: 'Facebook', icon: FiFacebook, url: siteConfig.facebookUrl },
 ].filter((entry) => entry.url);
 
-const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
-
 export default function Footer() {
-  const [newsletterEmail, setNewsletterEmail] = useState('');
-  const [newsletterLoading, setNewsletterLoading] = useState(false);
-  const [newsletterStatus, setNewsletterStatus] = useState({ type: 'idle', message: '' });
-
-  const handleNewsletterSubmit = async (event) => {
-    event.preventDefault();
-    const trimmed = newsletterEmail.trim();
-    if (!trimmed) return;
-
-    setNewsletterLoading(true);
-    setNewsletterStatus({ type: 'idle', message: '' });
-    try {
-      const response = await fetch('/api/newsletter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: trimmed, source: 'footer' }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Não foi possível salvar seu e-mail.');
-
-      const successMessage = data.duplicate
-        ? 'Este e-mail já estava inscrito.'
-        : 'Inscrição confirmada com sucesso.';
-      toast.success(successMessage, { style: toastStyle });
-      setNewsletterStatus({ type: 'success', message: successMessage });
-      setNewsletterEmail('');
-    } catch (err) {
-      console.error('[Footer] newsletter error:', err);
-      const errorMessage = err.message || 'Falha ao salvar seu e-mail.';
-      toast.error(errorMessage, { style: toastStyle });
-      setNewsletterStatus({ type: 'error', message: errorMessage });
-    } finally {
-      setNewsletterLoading(false);
-    }
-  };
-
   return (
     <footer className="bg-baby-text dark:bg-[#13101A] text-white">
-      <div className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="max-w-xl mx-auto text-center"
-          >
-            <h2 className="font-serif text-2xl lg:text-3xl mb-2">Faça parte da Família Nobre Amor</h2>
-            <p className="font-sans text-white/70 text-sm mb-5">
-              Receba novidades da loja no seu e-mail.
-            </p>
-            <form
-              onSubmit={handleNewsletterSubmit}
-              className="flex flex-col sm:flex-row gap-2 max-w-md mx-auto text-left"
-              noValidate
+      {siteConfig.instagramUrl && (
+        <div className="border-b border-white/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-12">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="max-w-xl mx-auto text-center"
             >
-              <div className="flex-1">
-                <label htmlFor="newsletter-email" className="block font-sans text-xs font-medium text-white/70 mb-1.5">
-                  Seu e-mail
-                </label>
-                <input
-                  id="newsletter-email"
-                  type="email"
-                  value={newsletterEmail}
-                  onChange={(event) => setNewsletterEmail(event.target.value)}
-                  placeholder="voce@exemplo.com"
-                  required
-                  disabled={newsletterLoading}
-                  aria-invalid={newsletterStatus.type === 'error' ? 'true' : undefined}
-                  aria-describedby={newsletterStatus.message ? 'newsletter-status' : undefined}
-                  className="w-full h-11 px-4 rounded-full bg-white/10 border border-white/20 text-white placeholder-white/40 font-sans text-sm focus:outline-none focus:ring-2 focus:ring-baby-pink focus:border-transparent disabled:opacity-60"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={newsletterLoading}
-                className="sm:self-end h-11 px-6 bg-baby-pink text-baby-text rounded-full font-sans font-semibold text-sm hover:bg-baby-pink-light active:scale-95 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-baby-pink focus:ring-offset-2 focus:ring-offset-baby-text disabled:opacity-60 whitespace-nowrap"
+              <h2 className="font-serif text-2xl lg:text-3xl mb-2">Faça parte da Família Nobre Amor</h2>
+              <p className="font-sans text-white/70 text-sm mb-5">
+                Acompanhe as novidades da loja no Instagram.
+              </p>
+              <a
+                href={siteConfig.instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 h-11 px-6 bg-baby-pink text-baby-text rounded-full font-sans font-semibold text-sm hover:bg-baby-pink-light active:scale-95 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-baby-pink focus:ring-offset-2 focus:ring-offset-baby-text"
               >
-                {newsletterLoading ? 'Enviando...' : 'Inscrever'}
-              </button>
-            </form>
-            <p
-              id="newsletter-status"
-              role={newsletterStatus.type === 'error' ? 'alert' : 'status'}
-              aria-live="polite"
-              className={`font-sans text-xs mt-3 min-h-4 ${
-                newsletterStatus.type === 'error'
-                  ? 'text-red-300'
-                  : newsletterStatus.type === 'success'
-                    ? 'text-green-300'
-                    : 'text-white/40'
-              }`}
-            >
-              {newsletterStatus.message}
-            </p>
-          </motion.div>
+                <FiInstagram size={18} />
+                Seguir {siteConfig.instagramHandle || 'no Instagram'}
+              </a>
+            </motion.div>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-10 lg:gap-12">
