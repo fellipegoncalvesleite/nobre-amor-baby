@@ -7,9 +7,8 @@ import { formatPrice } from '../lib/ui';
 
 const FALLBACK_SLIDE = {
   id: null,
-  name: 'Macacão Algodão Orgânico',
-  price: 129.9,
-  images: ['https://picsum.photos/seed/nobre-amor-hero/600/750'],
+  name: '',
+  images: [],
 };
 
 export default function Hero() {
@@ -163,20 +162,23 @@ export default function Hero() {
               <div className="absolute inset-0 bg-surface/40 rounded-[3rem] transform rotate-3 shadow-soft-lg" />
               <div className="relative aspect-4/5 overflow-hidden rounded-[2.5rem] shadow-soft-lg bg-linear-to-br from-baby-pink-light to-surface">
                 <AnimatePresence initial={false} mode="wait">
-                  <motion.img
-                    key={current?.images?.[0] || 'fallback'}
-                    src={current?.images?.[0]}
-                    alt={current?.name ? `Produto ${current.name}` : 'Produto Nobre Amor Baby'}
-                    className="absolute inset-0 w-full h-full object-cover"
-                    loading="eager"
-                    initial={{ opacity: 0, scale: 1.03 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ duration: 0.9, ease: 'easeInOut' }}
-                  />
+                  {current?.images?.[0] && (
+                    <motion.img
+                      key={current.images[0]}
+                      src={current.images[0]}
+                      alt={current.name ? `Produto ${current.name}` : 'Produto Nobre Amor Baby'}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      loading="eager"
+                      initial={{ opacity: 0, scale: 1.03 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      transition={{ duration: 0.9, ease: 'easeInOut' }}
+                    />
+                  )}
                 </AnimatePresence>
 
                 {/* Floating badge */}
+                {current?.name && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -206,6 +208,7 @@ export default function Hero() {
                     </Link>
                   </div>
                 </motion.div>
+                )}
 
                 {slides.length > 1 && (
                   <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-1.5">
