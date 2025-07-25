@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FiHome, FiRefreshCw, FiArrowLeft, FiArrowUp, FiArrowDown,
-  FiGrid, FiPackage, FiX, FiPlus, FiAlertTriangle,
+  FiGrid, FiPackage, FiImage, FiX, FiPlus, FiAlertTriangle,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing, btnPrimary, btnSecondary } from '../lib/ui';
@@ -81,6 +81,7 @@ export default function AdminHomePage({ embedded = false }) {
         featured_title: settings.featured_title,
         collections_order: settings.collections_order || [],
         featured_order: settings.featured_order || [],
+        hero_order: settings.hero_order || [],
       };
       await updateHomeSettings(payload);
       toast.success('Configurações salvas!', { style: toastStyle });
@@ -119,6 +120,13 @@ export default function AdminHomePage({ embedded = false }) {
     const order = settings.featured_order || [];
     if (!order.includes(id)) {
       update('featured_order', [...order, id]);
+    }
+  };
+
+  const addToHeroOrder = (id) => {
+    const order = settings.hero_order || [];
+    if (!order.includes(id)) {
+      update('hero_order', [...order, id]);
     }
   };
 
@@ -216,9 +224,11 @@ export default function AdminHomePage({ embedded = false }) {
 
   const collOrder = settings.collections_order || [];
   const featOrder = settings.featured_order || [];
+  const heroOrder = settings.hero_order || [];
 
   const availableCollections = allCollections.filter((c) => !collOrder.includes(c.id));
   const availableProducts = allProducts.filter((p) => !featOrder.includes(p.id));
+  const availableForHero = allProducts.filter((p) => !heroOrder.includes(p.id) && p.is_public !== false);
 
   const Wrapper = embedded ? 'div' : 'section';
   const wrapperClass = embedded ? '' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen';
@@ -245,6 +255,74 @@ export default function AdminHomePage({ embedded = false }) {
               <FiHome className="text-baby-accent" size={22} />
             </div>
             <h1 className="font-serif text-2xl sm:text-3xl text-baby-text">Gerenciar Página Inicial</h1>
+          </div>
+
+          {/* ── Hero Slider Section ─────────────────────── */}
+          <div className="bg-surface rounded-2xl shadow-soft p-6 mb-6 ring-1 ring-baby-accent/20">
+            <div className="flex items-center gap-2 mb-2">
+              <FiImage size={18} className="text-baby-accent" />
+              <h2 className="font-serif text-lg text-baby-text">Foto principal da página inicial (slider)</h2>
+            </div>
+            <p className="font-sans text-sm text-baby-text/60 mb-4">
+              Escolha os produtos que aparecem no slider grande no topo do site. A primeira foto de cada produto é usada e o slider alterna entre eles automaticamente. Se nenhum for selecionado, os produtos em Destaques são usados.
+            </p>
+
+            <div className="space-y-1.5">
+              {heroOrder.map((id, idx) => (
+                <div key={id} className="flex items-center gap-2 bg-baby-cream rounded-xl px-3 py-2">
+                  {(() => {
+                    const prod = allProducts.find((x) => x.id === id);
+                    const img = prod?.images?.[0];
+                    return img ? (
+                      <img src={img} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-baby-pink/30 shrink-0" />
+                    );
+                  })()}
+                  <span className="font-sans text-sm text-baby-text flex-1 truncate">{getItemName(allProducts, id)}</span>
+                  <button type="button" onClick={() => update('hero_order', moveUp(heroOrder, idx))}
+                    disabled={idx === 0}
+                    className={`p-1 rounded hover:bg-baby-pink/40 disabled:opacity-20 ${focusRing}`}>
+                    <FiArrowUp size={14} />
+                  </button>
+                  <button type="button" onClick={() => update('hero_order', moveDown(heroOrder, idx))}
+                    disabled={idx === heroOrder.length - 1}
+                    className={`p-1 rounded hover:bg-baby-pink/40 disabled:opacity-20 ${focusRing}`}>
+                    <FiArrowDown size={14} />
+                  </button>
+                  <button type="button" onClick={() => update('hero_order', removeFromOrder(heroOrder, id))}
+                    className={`p-1 rounded hover:bg-red-100 text-red-500 ${focusRing}`}>
+                    <FiX size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {heroOrder.length === 0 && (
+              <p className="font-sans text-xs text-baby-text/40 mb-2">Nenhum produto selecionado.</p>
+            )}
+
+            {availableForHero.length > 0 && heroOrder.length < 6 && (
+              <div className="mt-3">
+                <p className="font-sans text-xs text-baby-text/50 mb-1">
+                  Adicionar produto ao slider {heroOrder.length > 0 && `(${heroOrder.length}/6)`}:
+                </p>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                  {availableForHero.map((p) => (
+                    <button key={p.id} type="button" onClick={() => addToHeroOrder(p.id)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans
+                                 border border-baby-text/15 hover:border-baby-accent hover:text-baby-accent
+                                 transition-colors ${focusRing}`}>
+                      <FiPlus size={12} />
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {heroOrder.length >= 6 && (
+              <p className="font-sans text-xs text-baby-text/50 mt-2">Máximo de 6 produtos no slider.</p>
+            )}
           </div>
 
           {/* ── Collections Section ────────────────────── */}

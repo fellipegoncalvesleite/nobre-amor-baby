@@ -138,6 +138,7 @@ const HOME_DEFAULTS = {
   featured_title: 'Destaques',
   collections_order: [],
   featured_order: [],
+  hero_order: [],
 };
 
 async function fetchHomeSettings() {

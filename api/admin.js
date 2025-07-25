@@ -600,6 +600,7 @@ async function handleHome(req, res, supabase) {
     featured_title: 'Destaques',
     collections_order: [],
     featured_order: [],
+    hero_order: [],
   };
 
   const isTableMissing = (err) =>
@@ -640,7 +641,7 @@ async function handleHome(req, res, supabase) {
   const allowed = [
     'collections_enabled', 'featured_enabled',
     'collections_title', 'featured_title',
-    'collections_order', 'featured_order',
+    'collections_order', 'featured_order', 'hero_order',
   ];
   const updates = {};
   for (const k of allowed) {

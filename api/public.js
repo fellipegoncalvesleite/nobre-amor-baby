@@ -223,6 +223,7 @@ async function handleHome(req, res, supabase) {
     featured_title: 'Destaques',
     collections_order: [],
     featured_order: [],
+    hero_order: [],
   };
 
   const { data: settings, error: settingsErr } = await supabase
@@ -251,6 +252,8 @@ async function handleHome(req, res, supabase) {
     featured_enabled: cfg.featured_enabled,
     collections_title: cfg.collections_title,
     featured_title: cfg.featured_title,
+    hero_order: cfg.hero_order || [],
+    featured_order: cfg.featured_order || [],
     collections: [],
     featured: [],
   };

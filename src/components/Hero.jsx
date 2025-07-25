@@ -14,6 +14,7 @@ const FALLBACK_SLIDE = {
 
 export default function Hero() {
   const { products, homeSettings } = useCatalog();
+  const heroOrder = homeSettings?.hero_order || [];
   const featuredOrder = homeSettings?.featured_order || [];
 
   const slides = useMemo(() => {
@@ -21,17 +22,18 @@ export default function Hero() {
       (p) => p.is_public !== false && p.images?.[0],
     );
     const byId = new Map(pub.map((p) => [String(p.id), p]));
-    // 1) Manager-curated list from /admin/inicio → Destaques
-    const curated = featuredOrder
-      .map((id) => byId.get(String(id)))
-      .filter(Boolean);
-    if (curated.length) return curated.slice(0, 6);
-    // 2) Fallback to products flagged `featured`
+    // 1) Manager-curated slider list from /admin/inicio → Foto principal
+    const heroCurated = heroOrder.map((id) => byId.get(String(id))).filter(Boolean);
+    if (heroCurated.length) return heroCurated.slice(0, 6);
+    // 2) Fallback to Destaques order
+    const featured = featuredOrder.map((id) => byId.get(String(id))).filter(Boolean);
+    if (featured.length) return featured.slice(0, 6);
+    // 3) Fallback to products flagged `featured`
     const starred = pub.filter((p) => p.featured);
     if (starred.length) return starred.slice(0, 6);
-    // 3) Last-resort: any public product, or the static fallback
+    // 4) Last-resort: any public product, or the static fallback
     return pub.slice(0, 6).length ? pub.slice(0, 6) : [FALLBACK_SLIDE];
-  }, [products, featuredOrder]);
+  }, [products, heroOrder, featuredOrder]);
 
   const [index, setIndex] = useState(0);
 

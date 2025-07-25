@@ -16,7 +16,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiPackage, FiPlus, FiSearch, FiRefreshCw, FiEdit2,
-  FiTrash2, FiEye, FiEyeOff, FiX, FiArrowLeft, FiInfo,
+  FiTrash2, FiEye, FiEyeOff, FiX, FiArrowLeft,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing, btnPrimary, btnSecondary, formatPrice } from '../lib/ui';
@@ -67,13 +67,11 @@ export default function AdminProductsPage({ embedded = false }) {
     products: allProducts,
     collections,
     isLoading: loading,
-    mode,
     upsertProduct: ctxUpsertProduct,
     removeProduct: ctxRemoveProduct,
     refresh: fetchData,
   } = useCatalog();
 
-  const seededMode = mode === 'seed';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [collectionFilter, setCollectionFilter] = useState('');
@@ -332,16 +330,6 @@ export default function AdminProductsPage({ embedded = false }) {
         )}
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-
-          {/* Seeded mode banner */}
-          {seededMode && (
-            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
-              <FiInfo className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={16} />
-              <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
-                <strong>Modo catálogo (exemplo):</strong> conecte o banco para salvar permanentemente.
-              </p>
-            </div>
-          )}
 
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
