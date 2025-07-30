@@ -5,7 +5,7 @@
  */
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiSettings, FiPackage, FiShoppingBag } from 'react-icons/fi';
+import { FiSettings, FiPackage, FiShoppingBag, FiHome } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { focusRing, btnSecondary } from '../lib/ui';
 
@@ -76,7 +76,22 @@ export default function AdminDashboardPage() {
                 Catálogo
               </p>
               <p className="font-sans text-sm text-baby-text/50 mt-2 leading-relaxed">
-                Produtos, coleções e configurações da página inicial
+                Gerencie produtos e coleções
+              </p>
+            </Link>
+
+            {/* Página Inicial */}
+            <Link
+              to="/admin/inicio"
+              className={`bg-surface rounded-2xl p-8 shadow-soft hover:ring-2 hover:ring-baby-accent
+                         transition-all group flex flex-col items-center text-center ${focusRing}`}
+            >
+              <FiHome className="text-baby-accent mb-4" size={48} />
+              <p className="font-serif text-xl text-baby-text group-hover:text-baby-accent transition-colors">
+                Página Inicial
+              </p>
+              <p className="font-sans text-sm text-baby-text/50 mt-2 leading-relaxed">
+                Slider, destaques e coleções exibidas na home
               </p>
             </Link>
 

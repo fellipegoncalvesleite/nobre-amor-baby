@@ -20,6 +20,7 @@ import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminOrdersPage from './pages/AdminOrdersPage';
 import AdminOrderDetailPage from './pages/AdminOrderDetailPage';
 import AdminCatalogPage from './pages/AdminCatalogPage';
+import AdminHomePage from './pages/AdminHomePage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 import MeusPedidosPage from './pages/MeusPedidosPage';
 import MinhaContaPage from './pages/MinhaContaPage';
@@ -87,7 +88,7 @@ function App() {
           <Route path="/admin/catalogo" element={<ProtectedRoute role="manager"><AdminCatalogPage /></ProtectedRoute>} />
           <Route path="/admin/produtos" element={<Navigate to="/admin/catalogo?tab=produtos" replace />} />
           <Route path="/admin/colecoes-gerenciar" element={<Navigate to="/admin/catalogo?tab=colecoes" replace />} />
-          <Route path="/admin/inicio" element={<Navigate to="/admin/catalogo?tab=inicio" replace />} />
+          <Route path="/admin/inicio" element={<ProtectedRoute role="manager"><AdminHomePage /></ProtectedRoute>} />
 
           <Route path="/debug" element={<ProtectedRoute role="debug"><DebugPage /></ProtectedRoute>} />
           <Route path="/sobre" element={<StaticPage page="sobre" />} />
