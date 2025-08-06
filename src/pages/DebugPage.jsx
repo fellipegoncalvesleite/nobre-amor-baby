@@ -316,13 +316,13 @@ export default function DebugPage() {
 
             <button
               type="button"
-              onClick={() => { resetCatalog(); toast('Catálogo restaurado ao padrão', { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } }); }}
+              onClick={() => { resetCatalog(); toast('Catálogo local limpo', { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } }); }}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-full font-sans text-sm
                          border border-baby-text/15 text-baby-text/60 hover:text-baby-accent
                          hover:border-baby-accent transition-colors ${focusRing}`}
             >
               <FiRotateCcw size={14} />
-              Reset catálogo
+              Limpar catálogo
             </button>
           </div>
 

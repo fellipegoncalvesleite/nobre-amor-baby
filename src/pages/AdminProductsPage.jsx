@@ -5,11 +5,9 @@
  *
  * Features:
  * - List products from DB (search, filter by status/collection)
- * - Falls back to seeded placeholders when DB is unavailable or empty
  * - Create / Edit modal with image upload via ImageUploader
  * - Stock controls: in_stock toggle, stock_count field, stock badge in table
  * - Toggle visibility (is_public), delete
- * - Seeded items are fully editable via local state
  */
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
@@ -98,6 +96,7 @@ export default function AdminProductsPage({ embedded = false }) {
       return true;
     });
   }, [allProducts, search, statusFilter, collectionFilter]);
+  const hasActiveFilters = Boolean(search || statusFilter || collectionFilter);
 
   /* ── Modal helpers ──────────────────────────────── */
   const openCreate = () => {
@@ -479,7 +478,9 @@ export default function AdminProductsPage({ embedded = false }) {
 
               {filteredProducts.length === 0 && !loading && (
                 <p className="font-sans text-baby-text/40 dark:text-gray-500 text-sm text-center py-8">
-                  Nenhum produto encontrado.
+                  {hasActiveFilters
+                    ? 'Nenhum produto encontrado com os filtros atuais.'
+                    : 'Nenhum produto cadastrado ainda. Clique em "Novo produto" para adicionar o primeiro item.'}
                 </p>
               )}
             </div>

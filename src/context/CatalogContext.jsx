@@ -2,12 +2,13 @@
  * CatalogContext — unified single source of truth for products + collections.
  *
  * Loading strategy:
- *   1. Try admin API (all products + all collections)
- *   2. On failure or empty → fallback to seed data
+ *   1. Read products + collections from the admin API
+ *   2. Keep an empty DB empty instead of injecting placeholder items
+ *   3. On request failures, preserve the last successful state
  *
  * Provides:
  *   products, collections  — arrays (normalized with camelCase compat)
- *   mode                   — "db" | "seed"
+ *   mode                   — "db"
  *   isLoading, error
  *   getProductById, getProductBySlug, getCollectionBySlug
  *   upsertProduct, removeProduct
@@ -16,7 +17,7 @@
  *   refresh, resetCatalog
  */
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   listProducts as apiListProducts,
   listCollections as apiListCollections,
@@ -27,8 +28,6 @@ import {
   updateCollection as apiUpdateCollection,
   deleteCollection as apiDeleteCollection,
 } from '../lib/adminApi';
-import { getSeededProducts } from '../adminSeeds/seedProducts';
-import { getSeededCollections } from '../adminSeeds/seedCollections';
 
 /* ── Product normalisation ────────────────────────────── */
 
@@ -158,22 +157,7 @@ export function CatalogProvider({ children }) {
   const [homeSettings, setHomeSettings] = useState(HOME_DEFAULTS);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [mode, setMode] = useState('seed');
-
-  const modeRef = useRef('seed');
-  const collectionsRef = useRef([]);
-
-  /* ── Seed fallback ─────────────────────────────── */
-
-  const loadSeeds = useCallback(() => {
-    const seedColls = getSeededCollections().map(normalizeCollection);
-    const seedProds = getSeededProducts().map((p) => normalizeProduct(p, seedColls));
-    setCollections(seedColls);
-    setProducts(seedProds);
-    setMode('seed');
-    modeRef.current = 'seed';
-    collectionsRef.current = seedColls;
-  }, []);
+  const [mode, setMode] = useState('db');
 
   /* ── Load catalog ──────────────────────────────── */
 
@@ -188,23 +172,17 @@ export function CatalogProvider({ children }) {
       ]);
       setHomeSettings(home);
 
-      if ((prods && prods.length > 0) || (colls && colls.length > 0)) {
-        const normColls = (colls || []).map(normalizeCollection);
-        const normProds = (prods || []).map((p) => normalizeProduct(p, normColls));
-        setCollections(normColls);
-        setProducts(normProds);
-        setMode('db');
-        modeRef.current = 'db';
-        collectionsRef.current = normColls;
-      } else {
-        loadSeeds();
-      }
-    } catch {
-      loadSeeds();
+      const normColls = (colls || []).map(normalizeCollection);
+      const normProds = (prods || []).map((p) => normalizeProduct(p, normColls));
+      setCollections(normColls);
+      setProducts(normProds);
+      setMode('db');
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Falha ao carregar catálogo.'));
     } finally {
       setIsLoading(false);
     }
-  }, [loadSeeds]);
+  }, []);
 
   useEffect(() => { loadCatalog(); }, [loadCatalog]);
 
@@ -213,8 +191,11 @@ export function CatalogProvider({ children }) {
   const refresh = useCallback(() => loadCatalog(), [loadCatalog]);
 
   const resetCatalog = useCallback(() => {
-    loadSeeds();
-  }, [loadSeeds]);
+    setProducts([]);
+    setCollections([]);
+    setError(null);
+    setMode('db');
+  }, []);
 
   /* ── Lookup helpers ────────────────────────────── */
 
@@ -236,75 +217,35 @@ export function CatalogProvider({ children }) {
   /* ── Product mutations ─────────────────────────── */
 
   const upsertProduct = useCallback(async (product) => {
-    if (modeRef.current === 'db') {
-      const isExisting = product.id && !String(product.id).startsWith('seed-') && !String(product.id).startsWith('local-');
-      if (isExisting) {
-        await apiUpdateProduct(product.id, product);
-      } else {
-        await apiCreateProduct(product);
-      }
-      await loadCatalog();
+    const isExisting = product.id && !String(product.id).startsWith('seed-') && !String(product.id).startsWith('local-');
+    if (isExisting) {
+      await apiUpdateProduct(product.id, product);
     } else {
-      const colls = collectionsRef.current;
-      setProducts((prev) => {
-        const normalized = normalizeProduct(
-          { ...product, id: product.id || `local-${Date.now()}`, updated_at: new Date().toISOString() },
-          colls,
-        );
-        const idx = prev.findIndex((p) => p.id === product.id);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = { ...copy[idx], ...normalized, _normalized: true };
-          return copy;
-        }
-        return [normalized, ...prev];
-      });
+      await apiCreateProduct(product);
     }
+    await loadCatalog();
   }, [loadCatalog]);
 
   const removeProduct = useCallback(async (id) => {
-    if (modeRef.current === 'db') {
-      await apiDeleteProduct(id);
-      await loadCatalog();
-    } else {
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-    }
+    await apiDeleteProduct(id);
+    await loadCatalog();
   }, [loadCatalog]);
 
   /* ── Collection mutations ──────────────────────── */
 
   const upsertCollection = useCallback(async (collection) => {
-    if (modeRef.current === 'db') {
-      const isExisting = collection.id && !String(collection.id).startsWith('seed-') && !String(collection.id).startsWith('local-');
-      if (isExisting) {
-        await apiUpdateCollection(collection.id, collection);
-      } else {
-        await apiCreateCollection(collection);
-      }
-      await loadCatalog();
+    const isExisting = collection.id && !String(collection.id).startsWith('seed-') && !String(collection.id).startsWith('local-');
+    if (isExisting) {
+      await apiUpdateCollection(collection.id, collection);
     } else {
-      setCollections((prev) => {
-        const normalized = normalizeCollection(
-          { ...collection, id: collection.id || `local-${Date.now()}`, updated_at: new Date().toISOString() },
-        );
-        const idx = prev.findIndex((c) => c.id === collection.id);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = { ...copy[idx], ...normalized };
-          return copy;
-        }
-        return [normalized, ...prev];
-      });
+      await apiCreateCollection(collection);
     }
+    await loadCatalog();
   }, [loadCatalog]);
 
   const removeCollection = useCallback(async (id) => {
-    if (modeRef.current === 'db') {
-      await apiDeleteCollection(id);
-      await loadCatalog();
-    } else {
-      setCollections((prev) => prev.filter((c) => c.id !== id));
-    }
+    await apiDeleteCollection(id);
+    await loadCatalog();
   }, [loadCatalog]);
 
   /* ── Stock helpers (compat with Debug/Checkout) ── */
