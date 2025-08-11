@@ -33,7 +33,6 @@ E-commerce de moda infantil desenvolvido com React e Vite, com catálogo públic
 
 ## Configuração
 
-
 ```env
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
@@ -45,3 +44,28 @@ ASAAS_WEBHOOK_TOKEN=
 MELHOR_ENVIO_TOKEN=
 SITE_URL=
 ADMIN_API_KEY=
+```
+
+Copie o exemplo de variáveis e preencha os valores do projeto:
+
+```bash
+cp .env.example .env
+npm install
+npm run dev
+```
+
+## Scripts
+
+```bash
+npm run lint
+npm run build
+npm run preview
+```
+
+## Banco de dados
+
+As migrations do Supabase ficam em `supabase/`. Execute os arquivos na ordem numérica antes de usar o painel administrativo ou o checkout.
+
+## Deploy
+
+O projeto está preparado para Vercel. Configure as mesmas variáveis de ambiente no painel do projeto antes de publicar.

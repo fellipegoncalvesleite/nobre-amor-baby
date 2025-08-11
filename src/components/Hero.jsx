@@ -13,10 +13,10 @@ const FALLBACK_SLIDE = {
 
 export default function Hero() {
   const { products, homeSettings } = useCatalog();
-  const heroOrder = homeSettings?.hero_order || [];
-  const featuredOrder = homeSettings?.featured_order || [];
 
   const slides = useMemo(() => {
+    const heroOrder = homeSettings?.hero_order || [];
+    const featuredOrder = homeSettings?.featured_order || [];
     const pub = (products || []).filter(
       (p) => p.is_public !== false && p.images?.[0],
     );
@@ -32,7 +32,7 @@ export default function Hero() {
     if (starred.length) return starred.slice(0, 6);
     // 4) Last-resort: any public product, or the static fallback
     return pub.slice(0, 6).length ? pub.slice(0, 6) : [FALLBACK_SLIDE];
-  }, [products, heroOrder, featuredOrder]);
+  }, [products, homeSettings]);
 
   const [index, setIndex] = useState(0);
 
