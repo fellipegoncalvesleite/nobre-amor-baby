@@ -21,15 +21,8 @@ import { focusRing, btnPrimary, btnSecondary, formatPrice } from '../lib/ui';
 import { uploadImage } from '../lib/adminApi';
 import { useCatalog } from '../context/CatalogContext';
 import ImageUploader from '../components/admin/ImageUploader';
-import { SIZE_PRESETS } from '../utils/sizes';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
-
-const SIZE_GROUPS = [
-  { value: 'roupa', label: 'Roupa' },
-  { value: 'calçado', label: 'Calçado' },
-  { value: 'acessório', label: 'Acessório' },
-];
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos' },
@@ -53,7 +46,7 @@ const emptyForm = {
   categorySlug: '',
   collectionId: '',
   featured: false,
-  isPublic: false,
+  isPublic: true,
   inStock: true,
   stockCount: '99',
   weightGrams: '200',
@@ -64,6 +57,8 @@ export default function AdminProductsPage({ embedded = false }) {
   const {
     products: allProducts,
     collections,
+    sizeGroups: SIZE_GROUPS,
+    sizePresets: SIZE_PRESETS,
     isLoading: loading,
     upsertProduct: ctxUpsertProduct,
     removeProduct: ctxRemoveProduct,
@@ -101,7 +96,7 @@ export default function AdminProductsPage({ embedded = false }) {
   /* ── Modal helpers ──────────────────────────────── */
   const openCreate = () => {
     setEditingId(null);
-    setForm({ ...emptyForm });
+    setForm({ ...emptyForm, sizeGroup: SIZE_GROUPS[0]?.value || emptyForm.sizeGroup });
     setModalOpen(true);
   };
 

@@ -25,6 +25,16 @@ function json(res, status, body) {
   return res.status(status).json(body);
 }
 
+/* Strip PostgREST-structural characters so a search term can't break out of
+   the intended `.or(...ilike...)` filter and inject extra conditions. */
+function sanitizeSearch(value) {
+  return String(value || '')
+    .replace(/[,()*%:\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
 function slugify(text) {
   return text
     .toLowerCase()
@@ -54,9 +64,11 @@ export default async function handler(req, res) {
 
   /* ── auth: JWT first, fallback to x-admin-key ──── */
   const authHeader = req.headers['authorization'] || '';
+  req.authUser = null;
   if (authHeader.startsWith('Bearer ')) {
     const mgr = await requireManager(req, res);
     if (!mgr) return; // response already sent by requireManager
+    req.authUser = mgr.user;
   } else {
     // Legacy x-admin-key fallback
     const adminKey = process.env.ADMIN_API_KEY;
@@ -88,8 +100,16 @@ export default async function handler(req, res) {
         return await handleUpload(req, res, supabase);
       case 'newsletter':
         return id ? await handleNewsletterDetail(req, res, supabase, id) : await handleNewsletter(req, res, supabase);
+      case 'drafts':
+        return await handleDrafts(req, res, supabase);
+      case 'launch':
+        return await handleLaunch(req, res, supabase, req.authUser);
+      case 'orders-unread':
+        return await handleOrdersUnread(req, res, supabase, req.authUser);
+      case 'catalog-settings':
+        return await handleCatalogSettings(req, res, supabase);
       default:
-        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: orders, products, collections, home, upload, newsletter.' });
+        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter.' });
     }
   } catch (err) {
     console.error(`[admin/${resource}] unhandled:`, err);
@@ -116,9 +136,10 @@ async function handleOrders(req, res, supabase) {
     query = query.eq('status', status);
   }
 
-  if (q) {
+  const safeQ = sanitizeSearch(q);
+  if (safeQ) {
     query = query.or(
-      `order_code.ilike.%${q}%,customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%`
+      `order_code.ilike.%${safeQ}%,customer_name.ilike.%${safeQ}%,customer_phone.ilike.%${safeQ}%`
     );
   }
 
@@ -336,8 +357,9 @@ async function handleProducts(req, res, supabase) {
 
     let query = supabase.from('products').select('*');
 
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
+    const safeSearch = sanitizeSearch(search);
+    if (safeSearch) {
+      query = query.or(`name.ilike.%${safeSearch}%,slug.ilike.%${safeSearch}%`);
     }
 
     if (statusFilter === 'public') query = query.eq('is_public', true);
@@ -813,4 +835,211 @@ async function handleUpload(req, res, supabase) {
   const url = urlData?.publicUrl || '';
 
   return json(res, 200, { url, path, bucket });
+}
+
+/* ══════════════════════════════════════════════════
+   DRAFTS — list private products + collections
+   ══════════════════════════════════════════════════ */
+async function handleDrafts(req, res, supabase) {
+  if (req.method !== 'GET') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET.' });
+  }
+
+  const [{ data: products, error: pErr }, { data: collections, error: cErr }] = await Promise.all([
+    supabase.from('products').select('*').eq('is_public', false).order('created_at', { ascending: false }),
+    supabase.from('collections').select('*').eq('is_active', false).order('name', { ascending: true }),
+  ]);
+
+  if (pErr) {
+    console.error('[admin/drafts] products error:', pErr);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao listar rascunhos de produtos.' });
+  }
+  if (cErr) {
+    console.error('[admin/drafts] collections error:', cErr);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao listar rascunhos de coleções.' });
+  }
+
+  return json(res, 200, { products: products || [], collections: collections || [] });
+}
+
+/* ══════════════════════════════════════════════════
+   LAUNCH — flip drafts public + snapshot in launches
+   ══════════════════════════════════════════════════ */
+async function handleLaunch(req, res, supabase, authUser) {
+  if (req.method !== 'POST') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
+  }
+
+  const body = req.body || {};
+  const explicitProductIds = Array.isArray(body.product_ids) ? body.product_ids : null;
+  const explicitCollectionIds = Array.isArray(body.collection_ids) ? body.collection_ids : null;
+
+  // Resolve targets: explicit IDs if provided, otherwise every draft
+  let productIds = explicitProductIds;
+  let collectionIds = explicitCollectionIds;
+
+  if (!productIds) {
+    const { data, error } = await supabase.from('products').select('id').eq('is_public', false);
+    if (error) {
+      console.error('[admin/launch] fetch drafts products:', error);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao buscar produtos privados.' });
+    }
+    productIds = (data || []).map((r) => r.id);
+  }
+
+  if (!collectionIds) {
+    const { data, error } = await supabase.from('collections').select('id').eq('is_active', false);
+    if (error) {
+      console.error('[admin/launch] fetch drafts collections:', error);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao buscar coleções privadas.' });
+    }
+    collectionIds = (data || []).map((r) => r.id);
+  }
+
+  if (!productIds.length && !collectionIds.length) {
+    return json(res, 400, { error: 'nothing_to_launch', message: 'Nada para lançar.' });
+  }
+
+  // Flip to public
+  if (productIds.length) {
+    const { error } = await supabase.from('products').update({ is_public: true }).in('id', productIds);
+    if (error) {
+      console.error('[admin/launch] flip products:', error);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao publicar produtos.' });
+    }
+  }
+  if (collectionIds.length) {
+    const { error } = await supabase.from('collections').update({ is_active: true }).in('id', collectionIds);
+    if (error) {
+      console.error('[admin/launch] flip collections:', error);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao publicar coleções.' });
+    }
+  }
+
+  // Record launch snapshot
+  const { data: launch, error: insertErr } = await supabase
+    .from('launches')
+    .insert({
+      product_ids: productIds,
+      collection_ids: collectionIds,
+      launched_by: authUser?.id || null,
+    })
+    .select()
+    .single();
+
+  if (insertErr) {
+    console.error('[admin/launch] record launch:', insertErr);
+    return json(res, 500, { error: 'db_error', message: 'Publicado, mas falha ao registrar lançamento.' });
+  }
+
+  return json(res, 201, { launch });
+}
+
+/* ══════════════════════════════════════════════════
+   ORDERS-UNREAD — unread count + mark-read
+   ══════════════════════════════════════════════════ */
+async function handleOrdersUnread(req, res, supabase, authUser) {
+  if (!authUser?.id) {
+    return json(res, 401, { error: 'unauthorized', message: 'Sessão necessária.' });
+  }
+
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET or POST.' });
+  }
+
+  if (req.method === 'POST') {
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('profiles')
+      .update({ last_seen_orders_at: now })
+      .eq('id', authUser.id);
+
+    if (error) {
+      console.error('[admin/orders-unread] mark read:', error);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao marcar como lido.' });
+    }
+    return json(res, 200, { last_seen_orders_at: now, unread: 0 });
+  }
+
+  // GET
+  const { data: profile, error: pErr } = await supabase
+    .from('profiles')
+    .select('last_seen_orders_at')
+    .eq('id', authUser.id)
+    .maybeSingle();
+
+  if (pErr) {
+    console.error('[admin/orders-unread] profile:', pErr);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao ler perfil.' });
+  }
+
+  const since = profile?.last_seen_orders_at || new Date(0).toISOString();
+
+  const { count, error: cErr } = await supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .gt('created_at', since);
+
+  if (cErr) {
+    console.error('[admin/orders-unread] count:', cErr);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao contar pedidos.' });
+  }
+
+  return json(res, 200, { unread: count || 0, last_seen_orders_at: since });
+}
+
+/* ══════════════════════════════════════════════════
+   CATALOG SETTINGS — size groups + presets (GET / PATCH)
+   ══════════════════════════════════════════════════ */
+async function handleCatalogSettings(req, res, supabase) {
+  if (req.method !== 'GET' && req.method !== 'PATCH') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET or PATCH.' });
+  }
+
+  const isTableMissing = (err) =>
+    err?.code === '42P01' ||
+    /does not exist|catalog_settings/i.test(err?.message || '');
+
+  if (req.method === 'GET') {
+    const { data, error } = await supabase
+      .from('catalog_settings')
+      .select('size_groups, size_presets')
+      .eq('key', 'catalog')
+      .maybeSingle();
+
+    if (error) {
+      if (isTableMissing(error)) {
+        return json(res, 503, { error: 'missing_table', message: 'Tabela catalog_settings não existe. Execute a migration 012.' });
+      }
+      return json(res, 500, { error: 'db_error', message: error.message });
+    }
+    return json(res, 200, { settings: data || null });
+  }
+
+  /* ── PATCH ──────────────────────────────────── */
+  const body = req.body || {};
+  const updates = {};
+  if (Array.isArray(body.size_groups)) updates.size_groups = body.size_groups;
+  if (body.size_presets && typeof body.size_presets === 'object' && !Array.isArray(body.size_presets)) {
+    updates.size_presets = body.size_presets;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return json(res, 400, { error: 'no_changes', message: 'Envie size_groups e/ou size_presets.' });
+  }
+
+  const { data, error } = await supabase
+    .from('catalog_settings')
+    .upsert({ key: 'catalog', ...updates }, { onConflict: 'key' })
+    .select('size_groups, size_presets')
+    .single();
+
+  if (error) {
+    if (isTableMissing(error)) {
+      return json(res, 503, { error: 'missing_table', message: 'Tabela catalog_settings não existe. Execute a migration 012.' });
+    }
+    return json(res, 500, { error: 'db_error', message: error.message });
+  }
+
+  return json(res, 200, { settings: data });
 }

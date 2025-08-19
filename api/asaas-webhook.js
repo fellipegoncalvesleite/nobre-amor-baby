@@ -27,10 +27,19 @@ export default async function handler(req, res) {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
   }
 
+  /* Enforce the shared token whenever it's configured (forgery protection).
+     If it is NOT configured we log loudly but still process the event, so a
+     deployment that hasn't set the env var yet doesn't silently stop payment
+     syncing. SET ASAAS_WEBHOOK_TOKEN (here + in the Asaas dashboard) to turn
+     on protection — otherwise anyone could POST a fake "payment confirmed". */
   const { webhookToken } = getAsaasConfig();
   const receivedToken = req.headers['asaas-access-token'];
-  if (webhookToken && receivedToken !== webhookToken) {
-    return json(res, 401, { error: 'unauthorized', message: 'Invalid webhook token.' });
+  if (webhookToken) {
+    if (receivedToken !== webhookToken) {
+      return json(res, 401, { error: 'unauthorized', message: 'Invalid webhook token.' });
+    }
+  } else {
+    console.error('[asaas-webhook] SECURITY: ASAAS_WEBHOOK_TOKEN not set — webhook is UNAUTHENTICATED. Set it to enable forgery protection.');
   }
 
   try {

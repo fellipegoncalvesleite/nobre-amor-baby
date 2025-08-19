@@ -22,3 +22,26 @@ export const SIZE_PRESETS = {
     'Único',
   ],
 };
+
+/**
+ * Default size groups (type of sizing). The manager can override these from
+ * the admin "Tamanhos" tab; these are the fallback when the DB has none.
+ */
+export const DEFAULT_SIZE_GROUPS = [
+  { value: 'roupa', label: 'Roupa' },
+  { value: 'calçado', label: 'Calçado' },
+  { value: 'acessório', label: 'Acessório' },
+];
+
+export const DEFAULT_SIZE_PRESETS = SIZE_PRESETS;
+
+/** Slugify a group label into a stable `value` key. */
+export function slugifySizeGroup(label) {
+  return String(label || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}

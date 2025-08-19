@@ -171,3 +171,49 @@ export async function updateHomeSettings(updates) {
   });
   return data.settings;
 }
+
+/* ── Drafts / Launches / Unread ───────────────────── */
+
+export async function listDrafts() {
+  const data = await request('/api/admin?resource=drafts');
+  return { products: data.products || [], collections: data.collections || [] };
+}
+
+export async function launchDrafts({ productIds, collectionIds } = {}) {
+  const body = {};
+  if (productIds) body.product_ids = productIds;
+  if (collectionIds) body.collection_ids = collectionIds;
+  const data = await request('/api/admin?resource=launch', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return data.launch;
+}
+
+export async function getOrdersUnread() {
+  const data = await request('/api/admin?resource=orders-unread');
+  return { unread: data.unread || 0, lastSeenAt: data.last_seen_orders_at || null };
+}
+
+export async function markOrdersRead() {
+  const data = await request('/api/admin?resource=orders-unread', { method: 'POST' });
+  return { unread: data.unread || 0, lastSeenAt: data.last_seen_orders_at || null };
+}
+
+/* ── Catalog settings (size groups / presets) ─────── */
+
+export async function getCatalogSettings() {
+  const data = await request('/api/admin?resource=catalog-settings');
+  return data.settings || null;
+}
+
+export async function updateCatalogSettings({ sizeGroups, sizePresets } = {}) {
+  const body = {};
+  if (sizeGroups) body.size_groups = sizeGroups;
+  if (sizePresets) body.size_presets = sizePresets;
+  const data = await request('/api/admin?resource=catalog-settings', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return data.settings || null;
+}

@@ -147,11 +147,55 @@ export default async function handler(req, res) {
       }
     }
 
-    const subtotalCents = items.reduce(
-      (sum, item) => sum + Math.round(Number(item.unitPriceCents)) * Math.max(1, Number(item.qty)),
-      0,
-    );
-    const shippingFeeCents = Number(shipping?.feeCents) || 0;
+    /* ── Server-side price authority ──────────────────────────────
+       Never trust client-sent prices. Resolve every line against the
+       products table; reject unknown or non-public products so a
+       tampered payload can't pay R$0,01 for a real item. */
+    const orderProductIds = [...new Set(
+      items.map((it) => String(it.productId ?? it.id ?? '').trim()).filter(Boolean),
+    )];
+
+    const { data: dbProducts, error: priceErr } = orderProductIds.length
+      ? await supabase
+          .from('products')
+          .select('id, name, price_cents, is_public')
+          .in('id', orderProductIds)
+      : { data: [], error: null };
+
+    if (priceErr) {
+      console.error('[orders] price lookup error:', priceErr);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao validar os produtos do pedido.' });
+    }
+
+    const productPriceMap = new Map((dbProducts || []).map((p) => [String(p.id), p]));
+
+    const resolvedItems = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      const pid = String(item.productId ?? item.id ?? '').trim();
+      const dbProduct = pid ? productPriceMap.get(pid) : null;
+
+      if (!dbProduct || dbProduct.is_public === false) {
+        return json(res, 400, {
+          error: 'invalid_product',
+          message: `O produto "${item.productName ?? item.name ?? pid}" não está mais disponível.`,
+        });
+      }
+
+      const qty = Math.max(1, Number(item.qty));
+      const unitPriceCents = Math.round(Number(dbProduct.price_cents));
+      resolvedItems.push({
+        productId: pid,
+        productName: dbProduct.name ?? item.productName ?? item.name ?? '',
+        size: item.size || '',
+        qty,
+        unitPriceCents,
+        lineTotalCents: unitPriceCents * qty,
+      });
+    }
+
+    const subtotalCents = resolvedItems.reduce((sum, it) => sum + it.lineTotalCents, 0);
+    const shippingFeeCents = Math.max(0, Math.round(Number(shipping?.feeCents) || 0));
     const totalCents = subtotalCents + shippingFeeCents;
 
     let userId = null;
@@ -220,14 +264,14 @@ export default async function handler(req, res) {
       });
     }
 
-    const itemRows = items.map((item) => ({
+    const itemRows = resolvedItems.map((item) => ({
       order_id: order.id,
-      product_id: String(item.productId ?? item.id ?? ''),
-      product_name: item.productName ?? item.name ?? '',
-      size: item.size || '',
-      qty: Math.max(1, Number(item.qty)),
-      unit_price_cents: Math.round(Number(item.unitPriceCents)),
-      line_total_cents: Math.round(Number(item.unitPriceCents)) * Math.max(1, Number(item.qty)),
+      product_id: item.productId,
+      product_name: item.productName,
+      size: item.size,
+      qty: item.qty,
+      unit_price_cents: item.unitPriceCents,
+      line_total_cents: item.lineTotalCents,
     }));
 
     const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);

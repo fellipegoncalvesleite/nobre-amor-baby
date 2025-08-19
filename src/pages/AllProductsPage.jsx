@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { SIZE_GROUPS } from '../data/products';
 import { useCatalog } from '../context/CatalogContext';
 import ProductCard from '../components/ProductCard';
 import { focusRing } from '../lib/ui';
@@ -36,7 +35,7 @@ const GROUP_LABELS = {
 };
 
 export default function AllProductsPage() {
-  const { products } = useCatalog();
+  const { products, sizeGroups: SIZE_GROUPS } = useCatalog();
   const [activeSizeGroup, setActiveSizeGroup] = useState('');
   const [activeExactRange, setActiveExactRange] = useState('');
 
@@ -49,7 +48,7 @@ export default function AllProductsPage() {
   /* Only show size-group chips that have at least one product */
   const availableGroups = useMemo(
     () => SIZE_GROUPS.filter((g) => products.some((p) => p.sizeGroup === g.value)),
-    [products],
+    [products, SIZE_GROUPS],
   );
 
   /* Build filtered + alphabetically-sorted product list */
@@ -78,11 +77,11 @@ export default function AllProductsPage() {
     for (const sg of SIZE_GROUPS) {
       const items = filtered.filter((p) => p.sizeGroup === sg.value);
       if (items.length > 0) {
-        groups.push({ key: sg.value, label: GROUP_LABELS[sg.value] ?? sg.label, items });
+        groups.push({ key: sg.value, label: sg.label || GROUP_LABELS[sg.value] || sg.value, items });
       }
     }
     return groups;
-  }, [filtered]);
+  }, [filtered, SIZE_GROUPS]);
 
   const handleGroupClick = (value) => {
     if (activeSizeGroup === value) {
@@ -152,7 +151,7 @@ export default function AllProductsPage() {
                               ${focusRing}`}
                   aria-pressed={isActive}
                 >
-                  {formatSizeGroupLabel(g.value)}
+                  {g.label || formatSizeGroupLabel(g.value)}
                 </button>
               );
             })}

@@ -31,6 +31,16 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+/* Strip PostgREST-structural characters so a search term can't break out of
+   the intended `.or(name.ilike.%x%,...)` filter and inject extra conditions. */
+function sanitizeSearch(value) {
+  return String(value || '')
+    .replace(/[,()*%:\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
 function isManagerProfile(profile) {
   return profile?.role === 'manager' || profile?.role === 'debug';
 }
@@ -203,10 +213,14 @@ export default async function handler(req, res) {
         return handleProfile(req, res, supabase);
       case 'my-orders':
         return handleMyOrders(req, res, supabase);
+      case 'launches':
+        return handleLaunches(req, res, supabase);
+      case 'catalog-settings':
+        return handleCatalogSettings(req, res, supabase);
       default:
         return json(res, 400, {
           error: 'bad_request',
-          message: 'Missing or invalid ?resource=. Use: home, products, collections, order, cancel-order, retry-payment, profile, my-orders.',
+          message: 'Missing or invalid ?resource=. Use: home, products, collections, order, cancel-order, retry-payment, profile, my-orders, launches, catalog-settings.',
         });
     }
   } catch (err) {
@@ -304,7 +318,8 @@ async function handleProducts(req, res, supabase) {
   let query = supabase.from('products').select('*').eq('is_public', true);
   if (collection) query = query.eq('collection_id', collection);
   if (featured === 'true') query = query.eq('featured', true);
-  if (search) query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
+  const safeSearch = sanitizeSearch(search);
+  if (safeSearch) query = query.or(`name.ilike.%${safeSearch}%,slug.ilike.%${safeSearch}%`);
 
   const max = Math.min(parseInt(limit, 10) || 50, 200);
   const { data, error } = await query.order('created_at', { ascending: false }).limit(max);
@@ -632,4 +647,84 @@ async function handleMyOrders(req, res, supabase) {
   }
 
   return json(res, 200, { orders: result });
+}
+
+/* ══════════════════════════════════════════════════
+   LAUNCHES — latest active launch or specific launch
+   ══════════════════════════════════════════════════ */
+async function handleLaunches(req, res, supabase) {
+  if (req.method !== 'GET') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET.' });
+  }
+
+  const { id, scope } = req.query;
+  const nowIso = new Date().toISOString();
+
+  if (id) {
+    const { data, error } = await supabase
+      .from('launches')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      console.error('[public/launches] detail:', error);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao buscar lançamento.' });
+    }
+    if (!data) return json(res, 404, { error: 'not_found', message: 'Lançamento não encontrado.' });
+    return json(res, 200, { launch: data });
+  }
+
+  if (scope === 'history') {
+    const { data, error } = await supabase
+      .from('launches')
+      .select('*')
+      .gt('expires_at', nowIso)
+      .order('launched_at', { ascending: false })
+      .limit(30);
+    if (error) {
+      console.error('[public/launches] history:', error);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao listar lançamentos.' });
+    }
+    return json(res, 200, { launches: data || [] });
+  }
+
+  // Default: latest non-expired launch
+  const { data, error } = await supabase
+    .from('launches')
+    .select('*')
+    .gt('expires_at', nowIso)
+    .order('launched_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[public/launches] latest:', error);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao buscar lançamento.' });
+  }
+
+  return json(res, 200, { launch: data || null });
+}
+
+/* ══════════════════════════════════════════════════
+   CATALOG SETTINGS — manager-editable size groups/presets
+   ══════════════════════════════════════════════════ */
+async function handleCatalogSettings(req, res, supabase) {
+  if (req.method !== 'GET') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET.' });
+  }
+
+  const { data, error } = await supabase
+    .from('catalog_settings')
+    .select('size_groups, size_presets')
+    .eq('key', 'catalog')
+    .maybeSingle();
+
+  // If the table doesn't exist yet, return null so the client falls back to
+  // its built-in size defaults instead of erroring.
+  if (error) {
+    return json(res, 200, { settings: null });
+  }
+
+  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+  return json(res, 200, { settings: data || null });
 }

@@ -6,14 +6,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiShoppingBag, FiFolder } from 'react-icons/fi';
+import { FiShoppingBag, FiFolder, FiTag } from 'react-icons/fi';
 import { focusRing, btnSecondary } from '../lib/ui';
 import AdminProductsPage from './AdminProductsPage';
 import AdminCollectionsPage from './AdminCollectionsPage';
+import AdminSizesPage from './AdminSizesPage';
 
 const TABS = [
   { key: 'produtos', label: 'Produtos', Icon: FiShoppingBag },
   { key: 'colecoes', label: 'Coleções', Icon: FiFolder },
+  { key: 'tamanhos', label: 'Tamanhos', Icon: FiTag },
 ];
 
 export default function AdminCatalogPage() {
@@ -83,6 +85,7 @@ export default function AdminCatalogPage() {
           <div>
             {activeTab === 'produtos' && <AdminProductsContent />}
             {activeTab === 'colecoes' && <AdminCollectionsContent />}
+            {activeTab === 'tamanhos' && <AdminSizesPage />}
           </div>
 
           {/* Back links */}

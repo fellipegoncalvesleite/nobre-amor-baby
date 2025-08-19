@@ -1,4 +1,4 @@
-/**
+  /**
  * Seed products — client-side fallback data for when the DB is
  * not configured or returns an empty list.
  *

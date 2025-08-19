@@ -27,7 +27,10 @@ import {
   createCollection as apiCreateCollection,
   updateCollection as apiUpdateCollection,
   deleteCollection as apiDeleteCollection,
+  setAdminAccessToken,
 } from '../lib/adminApi';
+import { useAuth } from './AuthContext';
+import { DEFAULT_SIZE_GROUPS, DEFAULT_SIZE_PRESETS } from '../utils/sizes';
 
 /* ── Product normalisation ────────────────────────────── */
 
@@ -151,13 +154,55 @@ async function fetchHomeSettings() {
   }
 }
 
+/* Public (unauthenticated) catalog — only `is_public` products / `is_active`
+   collections. Used for the storefront so anonymous shoppers can see it. */
+async function fetchPublicProducts() {
+  const res = await fetch('/api/public?resource=products&limit=200');
+  if (!res.ok) throw new Error('Falha ao carregar produtos.');
+  const data = await res.json();
+  return data.products || [];
+}
+
+async function fetchPublicCollections() {
+  const res = await fetch('/api/public?resource=collections');
+  if (!res.ok) throw new Error('Falha ao carregar coleções.');
+  const data = await res.json();
+  return data.collections || [];
+}
+
+/* Manager-editable size groups/presets; null → use code defaults. */
+async function fetchCatalogSettings() {
+  try {
+    const res = await fetch('/api/public?resource=catalog-settings');
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.settings || null;
+  } catch {
+    return null;
+  }
+}
+
 export function CatalogProvider({ children }) {
+  const { hasRole, isAuthed, accessToken } = useAuth();
+  /* Managers/debug get the full catalog from the authenticated admin API
+     (so they can manage private/draft items). Everyone else — including
+     anonymous shoppers — gets the public catalog, which works without a token. */
+  const isManager = isAuthed && hasRole('manager');
+
   const [products, setProducts] = useState([]);
   const [collections, setCollections] = useState([]);
   const [homeSettings, setHomeSettings] = useState(HOME_DEFAULTS);
+  const [sizeGroups, setSizeGroups] = useState(DEFAULT_SIZE_GROUPS);
+  const [sizePresets, setSizePresets] = useState(DEFAULT_SIZE_PRESETS);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState('db');
+
+  /* Keep the admin API client's token in sync with the live session so admin
+     calls work from any page (not only after ProtectedRoute mounts). */
+  useEffect(() => {
+    setAdminAccessToken(accessToken || '');
+  }, [accessToken]);
 
   /* ── Load catalog ──────────────────────────────── */
 
@@ -165,12 +210,22 @@ export function CatalogProvider({ children }) {
     setIsLoading(true);
     setError(null);
     try {
-      const [prods, colls, home] = await Promise.all([
-        apiListProducts({}),
-        apiListCollections(),
+      const [prods, colls, home, catalog] = await Promise.all([
+        isManager ? apiListProducts({ limit: 200 }) : fetchPublicProducts(),
+        isManager ? apiListCollections() : fetchPublicCollections(),
         fetchHomeSettings(),
+        fetchCatalogSettings(),
       ]);
       setHomeSettings(home);
+
+      const groups = Array.isArray(catalog?.size_groups) && catalog.size_groups.length
+        ? catalog.size_groups
+        : DEFAULT_SIZE_GROUPS;
+      const presets = catalog?.size_presets && typeof catalog.size_presets === 'object'
+        ? catalog.size_presets
+        : DEFAULT_SIZE_PRESETS;
+      setSizeGroups(groups);
+      setSizePresets(presets);
 
       const normColls = (colls || []).map(normalizeCollection);
       const normProds = (prods || []).map((p) => normalizeProduct(p, normColls));
@@ -182,7 +237,7 @@ export function CatalogProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isManager]);
 
   useEffect(() => { loadCatalog(); }, [loadCatalog]);
 
@@ -288,6 +343,8 @@ export function CatalogProvider({ children }) {
       products,
       collections,
       homeSettings,
+      sizeGroups,
+      sizePresets,
       isLoading,
       error,
       mode,
@@ -310,7 +367,7 @@ export function CatalogProvider({ children }) {
         upsertProduct({ ...existing, ...changes });
       },
     }),
-    [products, collections, homeSettings, isLoading, error, mode, getProductById, getProductBySlug, getCollectionBySlug,
+    [products, collections, homeSettings, sizeGroups, sizePresets, isLoading, error, mode, getProductById, getProductBySlug, getCollectionBySlug,
      upsertProduct, removeProduct, upsertCollection, removeCollection,
      setStock, decrementStock, incrementStock, refresh, resetCatalog],
   );

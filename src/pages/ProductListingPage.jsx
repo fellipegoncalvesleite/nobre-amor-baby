@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { SIZE_GROUPS } from '../data/products';
 import { useCatalog } from '../context/CatalogContext';
 import ProductCard from '../components/ProductCard';
 import { btnSecondary, focusRing } from '../lib/ui';
@@ -37,7 +36,7 @@ function collectExactRanges(productList, groupValue) {
 }
 
 export default function ProductListingPage({ filter }) {
-  const { products, getCollectionBySlug } = useCatalog();
+  const { products, getCollectionBySlug, sizeGroups: SIZE_GROUPS } = useCatalog();
   const { slug } = useParams();
   const category = filter === 'category' ? getCollectionBySlug(slug) : null;
 
@@ -64,7 +63,7 @@ export default function ProductListingPage({ filter }) {
   /* Only show size-group chips that have at least one product in the base set */
   const availableGroups = useMemo(
     () => SIZE_GROUPS.filter((g) => baseFiltered.some((p) => p.sizeGroup === g.value)),
-    [baseFiltered],
+    [baseFiltered, SIZE_GROUPS],
   );
 
   /* Available exact ranges for selected group */
@@ -178,7 +177,7 @@ export default function ProductListingPage({ filter }) {
                               ${focusRing}`}
                   aria-pressed={isActive}
                 >
-                  {formatSizeGroupLabel(g.value)}
+                  {g.label || formatSizeGroupLabel(g.value)}
                 </button>
               );
             })}
