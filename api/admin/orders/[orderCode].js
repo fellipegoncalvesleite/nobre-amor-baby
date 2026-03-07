@@ -2,6 +2,8 @@
  * /api/admin/orders/[orderCode]
  *   GET   — single order detail (protected)
  *   PATCH — update status / notes (protected)
+ *          On confirm: decrements stock_count for each order item in products table.
+ *          On reject: stock remains unchanged (was never decremented).
  *
  * Returns 200: { order: { ...orderFields, items: [...] } }
  * Errors:  400 / 401 / 404 / 405 / 500 — always JSON
@@ -53,6 +55,19 @@ export default async function handler(req, res) {
     if (req.method === 'PATCH') {
       const body = req.body || {};
       const updates = {};
+
+      // Fetch current order to check previous status
+      const { data: currentOrder, error: fetchErr } = await supabase
+        .from('orders')
+        .select('id, status')
+        .eq('order_code', orderCode)
+        .single();
+
+      if (fetchErr || !currentOrder) {
+        return json(res, 404, { error: 'not_found', message: `Pedido ${orderCode} não encontrado.` });
+      }
+
+      const previousStatus = currentOrder.status;
 
       // Status change
       if (body.status !== undefined) {
@@ -106,6 +121,55 @@ export default async function handler(req, res) {
       if (updateErr) {
         console.error('[admin/orders/patch] update error:', updateErr);
         return json(res, 500, { error: 'db_error', message: 'Falha ao atualizar pedido.' });
+      }
+
+      /* ── Stock adjustment on confirm ────────── */
+      // Decrement stock only when transitioning TO confirmed from a non-confirmed status
+      if (body.status === 'confirmed' && previousStatus !== 'confirmed') {
+        try {
+          const { data: items } = await supabase
+            .from('order_items')
+            .select('product_id, qty')
+            .eq('order_id', currentOrder.id);
+
+          if (items && items.length > 0) {
+            for (const item of items) {
+              if (!item.product_id) continue;
+              // Use rpc or direct update to decrement; clamp at 0
+              await supabase.rpc('decrement_stock', {
+                p_product_id: item.product_id,
+                p_qty: item.qty,
+              });
+            }
+            console.log(`[admin/orders/patch] Stock decremented for ${items.length} items in order ${orderCode}`);
+          }
+        } catch (stockErr) {
+          // Non-fatal: order confirmed but stock decrement failed
+          console.error('[admin/orders/patch] stock decrement error (non-fatal):', stockErr);
+        }
+      }
+
+      // If resetting from confirmed back to new, restore stock
+      if (body.status === 'new' && previousStatus === 'confirmed') {
+        try {
+          const { data: items } = await supabase
+            .from('order_items')
+            .select('product_id, qty')
+            .eq('order_id', currentOrder.id);
+
+          if (items && items.length > 0) {
+            for (const item of items) {
+              if (!item.product_id) continue;
+              await supabase.rpc('increment_stock', {
+                p_product_id: item.product_id,
+                p_qty: item.qty,
+              });
+            }
+            console.log(`[admin/orders/patch] Stock restored for ${items.length} items in order ${orderCode}`);
+          }
+        } catch (stockErr) {
+          console.error('[admin/orders/patch] stock restore error (non-fatal):', stockErr);
+        }
       }
 
       // Fall through to fetch and return updated order

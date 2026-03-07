@@ -1423,6 +1423,89 @@ export default function DebugPage() {
             Dev Tools — alterações persistem em localStorage. Use &ldquo;Reset catálogo&rdquo; para restaurar tudo.
           </p>
 
+          {/* ── Admin API Quick Tests ─────────────────── */}
+          <div className="bg-surface rounded-2xl shadow-soft p-4 mt-8">
+            <h2 className="font-serif text-lg text-baby-text mb-4">Admin API Quick Tests</h2>
+
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={`${miniBtn} bg-baby-pink/40 hover:bg-baby-pink/60 text-baby-text`}
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/public/home');
+                    const data = await res.json();
+                    toast.success(`Home config OK — ${data.collections?.length || 0} coleções, ${data.featured?.length || 0} destaques`, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                    console.log('[Debug] /api/public/home', data);
+                  } catch (err) {
+                    toast.error('Falha: ' + err.message, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  }
+                }}>
+                GET /api/public/home
+              </button>
+
+              <button type="button" className={`${miniBtn} bg-baby-pink/40 hover:bg-baby-pink/60 text-baby-text`}
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/public/products?limit=5');
+                    const data = await res.json();
+                    toast.success(`Public products OK — ${data.products?.length || 0} produtos`, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                    console.log('[Debug] /api/public/products', data);
+                  } catch (err) {
+                    toast.error('Falha: ' + err.message, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  }
+                }}>
+                GET /api/public/products
+              </button>
+
+              <button type="button" className={`${miniBtn} bg-baby-pink/40 hover:bg-baby-pink/60 text-baby-text`}
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/public/collections');
+                    const data = await res.json();
+                    toast.success(`Public collections OK — ${data.collections?.length || 0} coleções`, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                    console.log('[Debug] /api/public/collections', data);
+                  } catch (err) {
+                    toast.error('Falha: ' + err.message, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  }
+                }}>
+                GET /api/public/collections
+              </button>
+
+              <button type="button" className={`${miniBtn} bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 text-purple-700 dark:text-purple-300`}
+                onClick={async () => {
+                  try {
+                    const key = import.meta.env.VITE_ADMIN_API_KEY;
+                    const res = await fetch('/api/admin/products', {
+                      headers: { 'x-admin-key': key },
+                    });
+                    const data = await res.json();
+                    toast.success(`Admin products OK — ${data.products?.length || 0} produtos`, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                    console.log('[Debug] /api/admin/products', data);
+                  } catch (err) {
+                    toast.error('Falha: ' + err.message, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  }
+                }}>
+                GET /api/admin/products
+              </button>
+
+              <button type="button" className={`${miniBtn} bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 text-purple-700 dark:text-purple-300`}
+                onClick={async () => {
+                  try {
+                    const key = import.meta.env.VITE_ADMIN_API_KEY;
+                    const res = await fetch('/api/admin/home', {
+                      headers: { 'x-admin-key': key },
+                    });
+                    const data = await res.json();
+                    toast.success('Admin home settings OK', { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                    console.log('[Debug] /api/admin/home', data);
+                  } catch (err) {
+                    toast.error('Falha: ' + err.message, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  }
+                }}>
+                GET /api/admin/home
+              </button>
+            </div>
+          </div>
+
           {/* Back link */}
           <div className="mt-8 text-center">
             <Link to="/" className={btnSecondary}>
