@@ -9,7 +9,7 @@
  */
 
 /** Production manager number (digits only). */
-const PRODUCTION_NUMBER = '5537998413962';
+const PRODUCTION_NUMBER = '5537984133962';
 
 /**
  * Check if WhatsApp test mode is active.
