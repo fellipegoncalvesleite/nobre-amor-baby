@@ -1,20 +1,21 @@
 /**
- * AdminOrderDetailPage — single order detail view.
+ * AdminOrderDetailPage — single order detail view with actions.
  *
  * Route: /admin/pedidos/:orderCode  (ProtectedRoute role="manager")
  *
  * MVP: uses VITE_ADMIN_API_KEY in the header.
  * TODO: replace with real session-based auth before going public.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiPackage, FiRefreshCw, FiMapPin, FiTruck, FiCreditCard, FiUser,
-  FiAlertTriangle, FiArrowLeft,
+  FiAlertTriangle, FiArrowLeft, FiCheck, FiX, FiMessageSquare,
+  FiEdit3, FiPhone,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
-import { formatPrice, focusRing, btnSecondary } from '../lib/ui';
+import { formatPrice, focusRing, btnSecondary, btnPrimary } from '../lib/ui';
 
 const STATUS_LABELS = {
   new: 'Novo',
@@ -36,13 +37,23 @@ const STATUS_COLORS = {
 
 const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
 
+const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
+
 export default function AdminOrderDetailPage() {
   const { orderCode } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchOrder = async () => {
+  /* ── Action state ───────────────────────────────── */
+  const [actionLoading, setActionLoading] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [notesText, setNotesText] = useState('');
+  const [notesDirty, setNotesDirty] = useState(false);
+  const [notesSaving, setNotesSaving] = useState(false);
+
+  const fetchOrder = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -52,21 +63,20 @@ export default function AdminOrderDetailPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Erro ao buscar pedido');
       setOrder(data.order);
+      setNotesText(data.order.manager_notes || '');
+      setNotesDirty(false);
     } catch (err) {
       console.error('[AdminOrderDetailPage]', err);
       setError(err.message);
-      toast.error('Falha ao carregar pedido', {
-        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
-      });
+      toast.error('Falha ao carregar pedido', { style: toastStyle });
     } finally {
       setLoading(false);
     }
-  };
+  }, [orderCode]);
 
   useEffect(() => {
     fetchOrder();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderCode]);
+  }, [fetchOrder]);
 
   const formatDate = (iso) => {
     if (!iso) return '—';
@@ -74,6 +84,104 @@ export default function AdminOrderDetailPage() {
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
       + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
+
+  /* ── PATCH helper ───────────────────────────────── */
+  const patchOrder = async (body) => {
+    const res = await fetch(`/api/admin/orders/${orderCode}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-key': ADMIN_KEY,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Erro ao atualizar pedido');
+    return data.order;
+  };
+
+  /* ── Actions ────────────────────────────────────── */
+  const handleConfirm = async () => {
+    setActionLoading(true);
+    try {
+      const updated = await patchOrder({ status: 'confirmed' });
+      setOrder(updated);
+      setNotesText(updated.manager_notes || '');
+      setNotesDirty(false);
+      toast.success('Pedido confirmado!', { style: toastStyle });
+    } catch (err) {
+      toast.error(err.message, { style: toastStyle });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectReason.trim()) {
+      toast.error('Informe o motivo da recusa.', { style: toastStyle });
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const updated = await patchOrder({ status: 'rejected', rejected_reason: rejectReason.trim() });
+      setOrder(updated);
+      setNotesText(updated.manager_notes || '');
+      setNotesDirty(false);
+      setRejectModalOpen(false);
+      setRejectReason('');
+      toast.success('Pedido recusado.', { style: toastStyle });
+    } catch (err) {
+      toast.error(err.message, { style: toastStyle });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResetToNew = async () => {
+    setActionLoading(true);
+    try {
+      const updated = await patchOrder({ status: 'new' });
+      setOrder(updated);
+      setNotesText(updated.manager_notes || '');
+      setNotesDirty(false);
+      toast.success('Status resetado para Novo.', { style: toastStyle });
+    } catch (err) {
+      toast.error(err.message, { style: toastStyle });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    setNotesSaving(true);
+    try {
+      const updated = await patchOrder({ manager_notes: notesText });
+      setOrder(updated);
+      setNotesDirty(false);
+      toast.success('Notas salvas!', { style: toastStyle });
+    } catch (err) {
+      toast.error(err.message, { style: toastStyle });
+    } finally {
+      setNotesSaving(false);
+    }
+  };
+
+  /* ── WhatsApp ───────────────────────────────────── */
+  const phoneDigits = (order?.customer_phone || '').replace(/\D/g, '');
+  const hasPhone = phoneDigits.length >= 10;
+
+  const openWa = (msg) => {
+    const url = `https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
+  const waConfirmedMsg = order
+    ? `Olá, ${order.customer_name || 'cliente'}! Seu pedido ${order.order_code} foi confirmado ✅. Total: ${formatPrice((order.total_cents || 0) / 100)}. Vamos preparar e já te avisamos. 💛`
+    : '';
+
+  const waRejectedMsg = order
+    ? `Olá, ${order.customer_name || 'cliente'}! Seu pedido ${order.order_code} foi recusado ❌. Motivo: ${order.rejected_reason || '(não informado)'}. Se quiser, posso te ajudar a ajustar o pedido.`
+    : '';
 
   /* ── Loading / Error states ─────────────────────── */
   if (loading) {
@@ -137,14 +245,25 @@ export default function AdminOrderDetailPage() {
                 <h1 className="font-serif text-xl sm:text-2xl text-baby-text">
                   {order.order_code}
                 </h1>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[order.status] || STATUS_COLORS.new}`}>
                     {STATUS_LABELS[order.status] || order.status}
                   </span>
                   <span className="font-sans text-xs text-baby-text/50">
-                    {formatDate(order.created_at)}
+                    Criado: {formatDate(order.created_at)}
                   </span>
                 </div>
+                {/* Timestamp details */}
+                {order.confirmed_at && (
+                  <p className="font-sans text-xs text-green-600 dark:text-green-400 mt-0.5">
+                    Confirmado em {formatDate(order.confirmed_at)}
+                  </p>
+                )}
+                {order.rejected_at && (
+                  <p className="font-sans text-xs text-red-600 dark:text-red-400 mt-0.5">
+                    Recusado em {formatDate(order.rejected_at)}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -161,6 +280,96 @@ export default function AdminOrderDetailPage() {
           </div>
 
           <div className="space-y-6">
+            {/* ── Actions ────────────────────────────── */}
+            <Card icon={FiCheck} title="Ações">
+              {/* Rejected reason display */}
+              {order.status === 'rejected' && order.rejected_reason && (
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+                  <p className="font-sans text-xs font-medium text-red-600 dark:text-red-400 mb-1">Motivo da recusa:</p>
+                  <p className="font-sans text-sm text-red-700 dark:text-red-300">{order.rejected_reason}</p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                {/* Confirm */}
+                <button
+                  type="button"
+                  disabled={actionLoading || order.status === 'confirmed'}
+                  onClick={handleConfirm}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                             transition-colors disabled:opacity-40
+                             bg-green-100 text-green-700 hover:bg-green-200
+                             dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 ${focusRing}`}
+                >
+                  <FiCheck size={15} />
+                  {order.status === 'confirmed' ? 'Já confirmado' : 'Confirmar pedido'}
+                </button>
+
+                {/* Reject */}
+                <button
+                  type="button"
+                  disabled={actionLoading || order.status === 'rejected'}
+                  onClick={() => setRejectModalOpen(true)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                             transition-colors disabled:opacity-40
+                             bg-red-100 text-red-700 hover:bg-red-200
+                             dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 ${focusRing}`}
+                >
+                  <FiX size={15} />
+                  {order.status === 'rejected' ? 'Já recusado' : 'Recusar pedido'}
+                </button>
+
+                {/* Reset to New */}
+                {(order.status === 'confirmed' || order.status === 'rejected') && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleResetToNew}
+                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                               transition-colors disabled:opacity-40
+                               bg-blue-100 text-blue-700 hover:bg-blue-200
+                               dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 ${focusRing}`}
+                  >
+                    <FiRefreshCw size={14} />
+                    Resetar para Novo
+                  </button>
+                )}
+              </div>
+            </Card>
+
+            {/* ── Contact (WhatsApp) ─────────────────── */}
+            <Card icon={FiPhone} title="Contato">
+              {hasPhone ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openWa(waConfirmedMsg)}
+                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                               transition-colors bg-green-100 text-green-700 hover:bg-green-200
+                               dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 ${focusRing}`}
+                  >
+                    <FiMessageSquare size={14} />
+                    WhatsApp — Confirmado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openWa(waRejectedMsg)}
+                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                               transition-colors bg-red-100 text-red-700 hover:bg-red-200
+                               dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 ${focusRing}`}
+                  >
+                    <FiMessageSquare size={14} />
+                    WhatsApp — Recusado
+                  </button>
+                </div>
+              ) : (
+                <p className="font-sans text-sm text-baby-text/40 italic">
+                  Telefone não informado — botões desabilitados.
+                </p>
+              )}
+              <InfoRow label="Telefone" value={order.customer_phone || '—'} />
+            </Card>
+
             {/* ── Customer ───────────────────────────── */}
             <Card icon={FiUser} title="Cliente">
               <InfoRow label="Nome" value={order.customer_name} />
@@ -262,14 +471,30 @@ export default function AdminOrderDetailPage() {
               )}
             </div>
 
-            {/* ── Manager notes ──────────────────────── */}
-            {order.manager_notes && (
-              <Card icon={FiPackage} title="Notas do Gerente">
-                <p className="font-sans text-sm text-baby-text whitespace-pre-wrap">
-                  {order.manager_notes}
-                </p>
-              </Card>
-            )}
+            {/* ── Manager notes (editable) ───────────── */}
+            <Card icon={FiEdit3} title="Notas internas">
+              <textarea
+                value={notesText}
+                onChange={(e) => { setNotesText(e.target.value); setNotesDirty(true); }}
+                rows={3}
+                placeholder="Adicione observações sobre este pedido…"
+                className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream p-3
+                           font-sans text-sm text-baby-text placeholder-baby-text/40
+                           focus:outline-none focus:ring-2 focus:ring-baby-accent focus:border-transparent
+                           resize-y ${focusRing}`}
+              />
+              <div className="flex justify-end mt-2">
+                <button
+                  type="button"
+                  disabled={!notesDirty || notesSaving}
+                  onClick={handleSaveNotes}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                             transition-colors disabled:opacity-40 ${btnPrimary}`}
+                >
+                  {notesSaving ? 'Salvando…' : 'Salvar notas'}
+                </button>
+              </div>
+            </Card>
           </div>
 
           {/* Back links */}
@@ -284,6 +509,68 @@ export default function AdminOrderDetailPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* ══════════════════════════════════════════════
+          REJECT MODAL
+          ══════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {rejectModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+            onClick={() => setRejectModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-surface rounded-2xl shadow-xl w-full max-w-md p-6"
+            >
+              <h3 className="font-serif text-lg text-baby-text mb-1">Recusar pedido</h3>
+              <p className="font-sans text-sm text-baby-text/60 mb-4">
+                Informe o motivo da recusa para o pedido {order.order_code}.
+              </p>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+                autoFocus
+                placeholder="Ex: produto esgotado, endereço incompleto…"
+                className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream p-3
+                           font-sans text-sm text-baby-text placeholder-baby-text/40
+                           focus:outline-none focus:ring-2 focus:ring-baby-accent focus:border-transparent
+                           resize-y ${focusRing}`}
+              />
+              <div className="flex gap-2 justify-end mt-4">
+                <button
+                  type="button"
+                  onClick={() => setRejectModalOpen(false)}
+                  className={`px-4 py-2 rounded-full font-sans text-sm border border-baby-text/15
+                             text-baby-text/60 hover:text-baby-accent hover:border-baby-accent
+                             transition-colors ${focusRing}`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading || !rejectReason.trim()}
+                  onClick={handleReject}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm font-medium
+                             transition-colors disabled:opacity-40
+                             bg-red-600 text-white hover:bg-red-700 ${focusRing}`}
+                >
+                  <FiX size={14} />
+                  {actionLoading ? 'Recusando…' : 'Confirmar recusa'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

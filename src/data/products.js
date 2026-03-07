@@ -440,13 +440,13 @@ export const benefits = [
   {
     id: 1,
     title: 'Qualidade Premium',
-    description: '100% algodão orgânico e sustentável',
+    description: 'Tecidos nobres e acabamentos impecáveis',
     icon: 'quality',
   },
   {
     id: 2,
-    title: 'Frete Grátis',
-    description: 'Em pedidos acima de R$\u00A0150',
+    title: 'Envio Seguro',
+    description: 'Entrega cuidadosa em todo o Brasil',
     icon: 'shipping',
   },
   {

@@ -5,7 +5,7 @@
  * Provides quick stock manipulation, cart seeding, and inventory overview.
  */
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FiTerminal,
@@ -37,6 +37,7 @@ const normalise = (s) =>
   s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 export default function DebugPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { products, setStock, resetCatalog } = useCatalog();
   const { cart, addToCart, clearCart, cartCount, shipping, setShipping, clearShipping, address, setAddress, clearAddress, payment, setPayment, setPaymentCard, resetPayment } = useStore();
@@ -64,6 +65,9 @@ export default function DebugPage() {
   const [orderSeedResult, setOrderSeedResult] = useState(null);
   const [orderListLoading, setOrderListLoading] = useState(false);
   const [orderListResult, setOrderListResult] = useState(null);
+  const [orderResetLoading, setOrderResetLoading] = useState(false);
+  const [orderResetResult, setOrderResetResult] = useState(null);
+  const [resetOrderCode, setResetOrderCode] = useState('');
 
   // Current packing calculation (reactive)
   const currentPkg = useMemo(
@@ -1267,6 +1271,45 @@ export default function DebugPage() {
                 {orderSeedLoading ? 'Enviando…' : 'Seed pedido (fake)'}
               </button>
 
+              {/* Seed + open in admin */}
+              <button
+                type="button"
+                disabled={orderSeedLoading}
+                onClick={async () => {
+                  setOrderSeedLoading(true);
+                  setOrderSeedResult(null);
+                  try {
+                    const res = await fetch('/api/orders', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        customer: { name: 'Teste Debug', phone: '5500999999999', email: 'debug@test.com', message: 'Seed + navigate' },
+                        address: { cep: '35502825', street: 'Rua Teste', number: '42', complement: '', neighborhood: 'Centro', city: 'Divinópolis', uf: 'MG' },
+                        shipping: { feeCents: 1200, etaText: '2-4 dias úteis', provider: 'SEDEX' },
+                        payment: { method: 'cartao', paidTotalCents: 8700, ref: 'cartao_debug' },
+                        items: [
+                          { productId: 'debug-3', productName: 'Macacão Urso (teste)', size: 'M', qty: 1, unitPriceCents: 7500 },
+                        ],
+                      }),
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.orderCode) {
+                      toast('Pedido criado! Abrindo…', { icon: '📦', style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                      navigate(`/admin/pedidos/${data.orderCode}`);
+                      return;
+                    }
+                    setOrderSeedResult({ ok: res.ok, status: res.status, data });
+                  } catch (err) {
+                    setOrderSeedResult({ ok: false, error: err.message });
+                  } finally {
+                    setOrderSeedLoading(false);
+                  }
+                }}
+                className={`${miniBtn} bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400`}
+              >
+                {orderSeedLoading ? 'Enviando…' : 'Criar fake + abrir no admin'}
+              </button>
+
               {/* List orders */}
               <button
                 type="button"
@@ -1301,6 +1344,43 @@ export default function DebugPage() {
               </Link>
             </div>
 
+            {/* Reset order status to new */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <input
+                type="text"
+                value={resetOrderCode}
+                onChange={(e) => setResetOrderCode(e.target.value)}
+                placeholder="NA-XXXXXXXX-XXXXXX"
+                className={`px-3 py-1 rounded-lg border border-baby-text/15 bg-surface font-mono text-xs text-baby-text placeholder-baby-text/30 w-52 ${focusRing}`}
+              />
+              <button
+                type="button"
+                disabled={orderResetLoading || !resetOrderCode.trim()}
+                onClick={async () => {
+                  setOrderResetLoading(true);
+                  setOrderResetResult(null);
+                  try {
+                    const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
+                    const res = await fetch(`/api/admin/orders/${resetOrderCode.trim()}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+                      body: JSON.stringify({ status: 'new' }),
+                    });
+                    const data = await res.json();
+                    setOrderResetResult({ ok: res.ok, status: res.status, data });
+                    if (res.ok) toast('Status resetado para Novo ✅', { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  } catch (err) {
+                    setOrderResetResult({ ok: false, error: err.message });
+                  } finally {
+                    setOrderResetLoading(false);
+                  }
+                }}
+                className={`${miniBtn} bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 disabled:opacity-40`}
+              >
+                {orderResetLoading ? 'Resetando…' : 'Reset status → new'}
+              </button>
+            </div>
+
             {/* Seed result */}
             {orderSeedResult && (
               <details open className="mb-3">
@@ -1321,6 +1401,18 @@ export default function DebugPage() {
                 </summary>
                 <pre className="mt-2 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-64 whitespace-pre-wrap">
                   {JSON.stringify(orderListResult, null, 2)}
+                </pre>
+              </details>
+            )}
+
+            {/* Reset result */}
+            {orderResetResult && (
+              <details open>
+                <summary className="cursor-pointer font-sans text-xs text-baby-text/50 hover:text-baby-text/70 transition-colors">
+                  Resultado reset ({orderResetResult.ok ? '✅ OK' : '❌ Erro'})
+                </summary>
+                <pre className="mt-2 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-40 whitespace-pre-wrap">
+                  {JSON.stringify(orderResetResult, null, 2)}
                 </pre>
               </details>
             )}
