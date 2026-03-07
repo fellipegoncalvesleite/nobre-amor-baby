@@ -269,7 +269,7 @@ export default function Header() {
                           Meu perfil
                         </Link>
                         <Link
-                          to="/"
+                          to="/meus-pedidos"
                           role="menuitem"
                           onClick={() => setIsAccountOpen(false)}
                           className={`flex items-center gap-3 px-4 py-2.5 font-sans text-sm text-baby-text/70
@@ -277,7 +277,7 @@ export default function Header() {
                                      ${focusRing}`}
                         >
                           <FiPackage size={16} aria-hidden="true" />
-                          Pedidos
+                          Meus Pedidos
                         </Link>
                       </div>
 
