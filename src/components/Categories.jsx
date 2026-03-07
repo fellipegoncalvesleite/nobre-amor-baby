@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiArrowRight } from 'react-icons/fi';
-import categories from '../data/categories';
+import { useCatalog } from '../context/CatalogContext';
 
 const containerVariants = {
   hidden: {},
@@ -14,8 +14,13 @@ const cardVariants = {
 };
 
 export default function Categories() {
+  const { collections } = useCatalog();
+  const categories = collections.filter((c) => c.is_active !== false);
+
+  if (categories.length === 0) return null;
+
   return (
-    <section id="colecoes" className="py-20 lg:py-28 bg-surface" aria-label="Coleções por faixa etária">
+    <section id="colecoes" className="py-20 lg:py-28 bg-surface" aria-label="Coleções">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Heading */}
         <motion.div

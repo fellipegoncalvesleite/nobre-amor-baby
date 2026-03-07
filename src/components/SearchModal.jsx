@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { FiSearch, FiX, FiArrowRight } from 'react-icons/fi';
 import { useCatalog } from '../context/CatalogContext';
-import categories from '../data/categories';
 import { formatPrice } from '../lib/ui';
 
 export default function SearchModal({ isOpen, onClose }) {
-  const { products } = useCatalog();
+  const { products, collections } = useCatalog();
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
   const modalRef = useRef(null);
@@ -55,12 +54,12 @@ export default function SearchModal({ isOpen, onClose }) {
     q.length < 2
       ? []
       : products.filter((p) => {
-          const cat = categories.find((c) => c.id === p.category);
-          const catName = cat ? normalise(cat.name) : '';
+          const coll = collections.find((c) => c.id === p.collection_id);
+          const collName = coll ? normalise(coll.name) : '';
           return (
             normalise(p.name).includes(q) ||
             normalise(p.description).includes(q) ||
-            catName.includes(q)
+            collName.includes(q)
           );
         });
 

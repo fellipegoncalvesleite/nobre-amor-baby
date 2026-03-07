@@ -39,7 +39,7 @@ const normalise = (s) =>
 export default function DebugPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { products, setStock, resetCatalog } = useCatalog();
+  const { products, setStock, resetCatalog, collections, mode, refresh, isLoading: catalogLoading } = useCatalog();
   const { cart, addToCart, clearCart, cartCount, shipping, setShipping, clearShipping, address, setAddress, clearAddress, payment, setPayment, setPaymentCard, resetPayment } = useStore();
 
   const [search, setSearch] = useState('');
@@ -194,6 +194,38 @@ export default function DebugPage() {
               <FiRotateCcw size={14} />
               Reset catálogo
             </button>
+          </div>
+
+          {/* Catalog info */}
+          <div className="bg-surface rounded-2xl p-5 shadow-soft mb-8">
+            <h2 className="font-serif text-lg text-baby-text mb-3 flex items-center gap-2">
+              <FiTerminal size={18} className="text-purple-500" />
+              Catálogo
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div className="bg-baby-cream/60 rounded-xl p-3">
+                <p className="font-sans text-lg font-bold text-baby-text">{mode}</p>
+                <p className="font-sans text-[11px] text-baby-text/50">Modo</p>
+              </div>
+              <div className="bg-baby-cream/60 rounded-xl p-3">
+                <p className="font-sans text-lg font-bold text-baby-text">{products.length}</p>
+                <p className="font-sans text-[11px] text-baby-text/50">Produtos</p>
+              </div>
+              <div className="bg-baby-cream/60 rounded-xl p-3">
+                <p className="font-sans text-lg font-bold text-baby-text">{collections.length}</p>
+                <p className="font-sans text-[11px] text-baby-text/50">Coleções</p>
+              </div>
+              <div className="bg-baby-cream/60 rounded-xl p-3">
+                <button
+                  type="button"
+                  onClick={() => { refresh(); toast('Catálogo recarregado', { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } }); }}
+                  disabled={catalogLoading}
+                  className={`${miniBtn} w-full bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 disabled:opacity-40`}
+                >
+                  {catalogLoading ? 'Carregando…' : 'Recarregar'}
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Stats */}

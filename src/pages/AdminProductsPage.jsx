@@ -11,7 +11,7 @@
  * - Toggle visibility (is_public), delete
  * - Seeded items are fully editable via local state
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,14 +20,10 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing, btnPrimary, btnSecondary, formatPrice } from '../lib/ui';
-import {
-  listProducts, createProduct, updateProduct, deleteProduct,
-  listCollections, uploadImage,
-} from '../lib/adminApi';
+import { uploadImage } from '../lib/adminApi';
+import { useCatalog } from '../context/CatalogContext';
 import ImageUploader from '../components/admin/ImageUploader';
 import { SIZE_PRESETS } from '../utils/sizes';
-import { getSeededProducts } from '../adminSeeds/seedProducts';
-import { getSeededCollections } from '../adminSeeds/seedCollections';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -67,13 +63,20 @@ const emptyForm = {
 };
 
 export default function AdminProductsPage({ embedded = false }) {
-  const [products, setProducts] = useState([]);
-  const [collections, setCollections] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    products: allProducts,
+    collections,
+    isLoading: loading,
+    mode,
+    upsertProduct: ctxUpsertProduct,
+    removeProduct: ctxRemoveProduct,
+    refresh: fetchData,
+  } = useCatalog();
+
+  const seededMode = mode === 'seed';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [collectionFilter, setCollectionFilter] = useState('');
-  const [seededMode, setSeededMode] = useState(false);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -82,61 +85,21 @@ export default function AdminProductsPage({ embedded = false }) {
   const [saving, setSaving] = useState(false);
   const [customSize, setCustomSize] = useState('');
 
-  // Stable refs for seeded local data
-  const localProductsRef = useRef(null);
-  const localCollectionsRef = useRef(null);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [prods, colls] = await Promise.all([
-        listProducts({ search, status: statusFilter, collection_id: collectionFilter }),
-        listCollections(),
-      ]);
-
-      if (prods.length === 0 && colls.length === 0 && !search && !statusFilter && !collectionFilter) {
-        // Backend OK but DB is empty — use seeds
-        if (!localProductsRef.current) localProductsRef.current = getSeededProducts();
-        if (!localCollectionsRef.current) localCollectionsRef.current = getSeededCollections();
-        setProducts(localProductsRef.current);
-        setCollections(localCollectionsRef.current);
-        setSeededMode(true);
-      } else {
-        setProducts(prods);
-        setCollections(colls);
-        setSeededMode(false);
-        localProductsRef.current = null;
-        localCollectionsRef.current = null;
+  /* ── Client-side filtering ─────────────────────── */
+  const filteredProducts = useMemo(() => {
+    return allProducts.filter((p) => {
+      if (search) {
+        const q = search.toLowerCase();
+        if (!p.name.toLowerCase().includes(q) && !(p.slug || '').toLowerCase().includes(q)) return false;
       }
-    } catch {
-      // Backend unavailable — fallback to seeds
-      if (!localProductsRef.current) localProductsRef.current = getSeededProducts();
-      if (!localCollectionsRef.current) localCollectionsRef.current = getSeededCollections();
-      setProducts(localProductsRef.current);
-      setCollections(localCollectionsRef.current);
-      setSeededMode(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, collectionFilter]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  /* ── Client-side filtering for seeded mode ──────── */
-  const filteredProducts = seededMode
-    ? products.filter((p) => {
-        if (search) {
-          const q = search.toLowerCase();
-          if (!p.name.toLowerCase().includes(q) && !p.slug.toLowerCase().includes(q)) return false;
-        }
-        if (statusFilter === 'public' && !p.is_public) return false;
-        if (statusFilter === 'private' && p.is_public) return false;
-        if (statusFilter === 'in_stock' && !p.in_stock) return false;
-        if (statusFilter === 'out_of_stock' && p.in_stock) return false;
-        if (collectionFilter && p.collection_id !== collectionFilter) return false;
-        return true;
-      })
-    : products;
+      if (statusFilter === 'public' && !p.is_public) return false;
+      if (statusFilter === 'private' && p.is_public) return false;
+      if (statusFilter === 'in_stock' && !p.in_stock) return false;
+      if (statusFilter === 'out_of_stock' && p.in_stock) return false;
+      if (collectionFilter && p.collection_id !== collectionFilter) return false;
+      return true;
+    });
+  }, [allProducts, search, statusFilter, collectionFilter]);
 
   /* ── Modal helpers ──────────────────────────────── */
   const openCreate = () => {
@@ -263,49 +226,16 @@ export default function AdminProductsPage({ embedded = false }) {
     }
 
     setSaving(true);
-
-    if (seededMode) {
-      const payload = buildPayload();
-      const now = new Date().toISOString();
-
-      if (editingId) {
-        const updatedProducts = products.map((p) =>
-          p.id === editingId ? { ...p, ...payload, updated_at: now } : p,
-        );
-        localProductsRef.current = updatedProducts;
-        setProducts(updatedProducts);
-        toast.success('Produto atualizado (local)!', { style: toastStyle });
-      } else {
-        const newProduct = {
-          id: `local-${Date.now()}`,
-          ...payload,
-          created_at: now,
-          updated_at: now,
-        };
-        const updatedProducts = [newProduct, ...products];
-        localProductsRef.current = updatedProducts;
-        setProducts(updatedProducts);
-        toast.success('Produto criado (local)!', { style: toastStyle });
-      }
-
-      setModalOpen(false);
-      setSaving(false);
-      return;
-    }
-
     try {
       const payload = buildPayload();
-
       if (editingId) {
-        await updateProduct(editingId, payload);
+        await ctxUpsertProduct({ id: editingId, ...payload });
         toast.success('Produto atualizado!', { style: toastStyle });
       } else {
-        await createProduct(payload);
+        await ctxUpsertProduct(payload);
         toast.success('Produto criado!', { style: toastStyle });
       }
-
       setModalOpen(false);
-      fetchData();
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -315,69 +245,31 @@ export default function AdminProductsPage({ embedded = false }) {
 
   const handleDelete = async (product) => {
     if (!confirm(`Excluir "${product.name}"?`)) return;
-
-    if (seededMode) {
-      const updatedProducts = products.filter((p) => p.id !== product.id);
-      localProductsRef.current = updatedProducts;
-      setProducts(updatedProducts);
-      toast.success('Produto excluído (local).', { style: toastStyle });
-      return;
-    }
-
     try {
-      await deleteProduct(product.id);
+      await ctxRemoveProduct(product.id);
       toast.success('Produto excluído.', { style: toastStyle });
-      fetchData();
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     }
   };
 
   const handleTogglePublic = async (product) => {
-    if (seededMode) {
-      const updatedProducts = products.map((p) =>
-        p.id === product.id ? { ...p, is_public: !p.is_public } : p,
-      );
-      localProductsRef.current = updatedProducts;
-      setProducts(updatedProducts);
-      toast.success(
-        product.is_public ? 'Produto tornado privado (local).' : 'Produto publicado (local)!',
-        { style: toastStyle },
-      );
-      return;
-    }
-
     try {
-      await updateProduct(product.id, { is_public: !product.is_public });
+      await ctxUpsertProduct({ ...product, is_public: !product.is_public });
       toast.success(
         product.is_public ? 'Produto tornado privado.' : 'Produto publicado!',
         { style: toastStyle },
       );
-      fetchData();
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     }
   };
 
   const handleToggleStock = async (product) => {
-    if (seededMode) {
-      const updatedProducts = products.map((p) =>
-        p.id === product.id
-          ? { ...p, in_stock: !p.in_stock, stock_count: !p.in_stock ? Math.max(p.stock_count || 0, 1) : 0 }
-          : p,
-      );
-      localProductsRef.current = updatedProducts;
-      setProducts(updatedProducts);
-      toast.success(
-        product.in_stock ? 'Marcado como esgotado (local).' : 'Marcado em estoque (local)!',
-        { style: toastStyle },
-      );
-      return;
-    }
-
     try {
       const newStock = !product.in_stock;
-      await updateProduct(product.id, {
+      await ctxUpsertProduct({
+        ...product,
         in_stock: newStock,
         stock_count: newStock ? Math.max(product.stock_count || 0, 1) : 0,
       });
@@ -385,7 +277,6 @@ export default function AdminProductsPage({ embedded = false }) {
         product.in_stock ? 'Marcado como esgotado.' : 'Marcado em estoque!',
         { style: toastStyle },
       );
-      fetchData();
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     }

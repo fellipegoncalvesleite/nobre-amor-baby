@@ -426,12 +426,11 @@ export function getProductBySlug(slug) {
 
 /* ── Size-group metadata ──────────────────────────────── */
 
-/** Ordered list of the 4 main size groups. */
+/** Ordered list of size-group types (matches DB schema). */
 export const SIZE_GROUPS = [
-  { value: '0-6m', label: '0–6 meses' },
-  { value: '6-12m', label: '6–12 meses' },
-  { value: '12-24m', label: '12–24 meses' },
-  { value: '24m-4a', label: '24 m–4 anos' },
+  { value: 'roupa', label: 'Roupas' },
+  { value: 'calçado', label: 'Calçados' },
+  { value: 'acessório', label: 'Acessórios' },
 ];
 
 /* ── Benefits ──────────────────────────────────────────── */

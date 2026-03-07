@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiArrowRight } from 'react-icons/fi';
-import categories from '../data/categories';
+import { useCatalog } from '../context/CatalogContext';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -14,6 +14,9 @@ const itemVariants = {
 };
 
 export default function ColecoesPage() {
+  const { collections } = useCatalog();
+  const categories = collections.filter((c) => c.is_active !== false);
+
   return (
     <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
