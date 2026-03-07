@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCatalog } from '../context/CatalogContext';
 import { useStore } from '../context/StoreContext';
 import { formatPrice, focusRing, btnSecondary } from '../lib/ui';
-import { normalizeCep, isValidCep, calculateShipping, isLocalCity } from '../utils/shipping';
+import { normalizeCep, isValidCep, calculateShipping, isLocalCity, getLastShippingError, clearLastShippingError } from '../utils/shipping';
 import { buildClothingPackage, DIMENSION_TIERS, PACKAGE_OVERHEAD_GRAMS } from '../utils/packing';
 import { searchCepByAddress, fetchCepInfo, formatCep } from '../utils/viacep';
 import { buildManagerPaidMessage, generateOrderId } from '../utils/orderMessage';
@@ -53,6 +53,10 @@ export default function DebugPage() {
 
   /* ── Payment / WhatsApp debug state ─────────────── */
   const [waPreview, setWaPreview] = useState('');
+
+  /* ── API frete debug state ──────────────────────── */
+  const [apiTestLoading, setApiTestLoading] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState(null);
   const [weightChecking, setWeightChecking] = useState(false);
 
   // Current packing calculation (reactive)
@@ -930,6 +934,153 @@ export default function DebugPage() {
                 Nenhum CEP encontrado para esse endereço.
               </p>
             )}
+          </div>
+
+          {/* ═══════════════════════════════════════════════
+              API FRETE (TESTE)
+              ═══════════════════════════════════════════════ */}
+          <div className="bg-surface rounded-2xl p-6 shadow-soft">
+            <h2 className="flex items-center gap-2 font-serif text-xl text-baby-text mb-4">
+              <span className="text-baby-accent">🌐</span> API Frete (teste)
+            </h2>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              <button
+                type="button"
+                disabled={apiTestLoading}
+                onClick={async () => {
+                  setApiTestLoading(true);
+                  setApiTestResult(null);
+                  try {
+                    const r = await fetch('/api/shipping-quote', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        toCep: '01001000',
+                        package: { weightKg: 0.3, lengthCm: 20, widthCm: 15, heightCm: 5 },
+                        items: [{ id: '1', qty: 1, priceCents: 5990 }],
+                      }),
+                    });
+                    const text = await r.text();
+                    let json = null;
+                    try { json = text ? JSON.parse(text) : null; } catch { /* ignore */ }
+                    setApiTestResult({ status: r.status, text: text.slice(0, 500), json });
+                    toast(r.ok ? `API OK (${r.status})` : `API erro (${r.status})`, {
+                      icon: r.ok ? '✅' : '❌',
+                      style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
+                    });
+                  } catch (err) {
+                    setApiTestResult({ status: 0, text: err.message, json: null });
+                    toast('Falha na requisição', { icon: '❌', style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  } finally {
+                    setApiTestLoading(false);
+                  }
+                }}
+                className={`${miniBtn} bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400`}
+              >
+                {apiTestLoading ? 'Testando…' : 'Testar API (POST válido)'}
+              </button>
+              <button
+                type="button"
+                disabled={apiTestLoading}
+                onClick={async () => {
+                  setApiTestLoading(true);
+                  setApiTestResult(null);
+                  try {
+                    const r = await fetch('/api/shipping-quote');
+                    const text = await r.text();
+                    let json = null;
+                    try { json = text ? JSON.parse(text) : null; } catch { /* ignore */ }
+                    setApiTestResult({ status: r.status, text: text.slice(0, 500), json });
+                    toast(`GET → ${r.status}`, { icon: r.status === 405 ? '✅' : '⚠️', style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  } catch (err) {
+                    setApiTestResult({ status: 0, text: err.message, json: null });
+                  } finally {
+                    setApiTestLoading(false);
+                  }
+                }}
+                className={`${miniBtn} bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400`}
+              >
+                Testar GET (deve dar 405)
+              </button>
+              <button
+                type="button"
+                disabled={apiTestLoading}
+                onClick={async () => {
+                  setApiTestLoading(true);
+                  setApiTestResult(null);
+                  try {
+                    const r = await fetch('/api/shipping-quote', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ toCep: 'INVALIDO' }),
+                    });
+                    const text = await r.text();
+                    let json = null;
+                    try { json = text ? JSON.parse(text) : null; } catch { /* ignore */ }
+                    setApiTestResult({ status: r.status, text: text.slice(0, 500), json });
+                    toast(`POST inválido → ${r.status}`, { icon: r.status === 400 ? '✅' : '⚠️', style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
+                  } catch (err) {
+                    setApiTestResult({ status: 0, text: err.message, json: null });
+                  } finally {
+                    setApiTestLoading(false);
+                  }
+                }}
+                className={`${miniBtn} bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400`}
+              >
+                Testar POST inválido (400)
+              </button>
+            </div>
+
+            {apiTestResult && (
+              <div className="space-y-2 mb-4">
+                <p className="font-sans text-xs text-baby-text/60">
+                  Status: <span className={`font-mono font-semibold ${apiTestResult.status >= 200 && apiTestResult.status < 300 ? 'text-green-600' : apiTestResult.status >= 400 ? 'text-red-500' : 'text-amber-500'}`}>{apiTestResult.status || 'N/A'}</span>
+                </p>
+                <details>
+                  <summary className="cursor-pointer font-sans text-xs text-baby-text/50 hover:text-baby-text/70 transition-colors">Response text</summary>
+                  <pre className="mt-1 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-40 whitespace-pre-wrap">{apiTestResult.text || '(vazio)'}</pre>
+                </details>
+                {apiTestResult.json && (
+                  <details>
+                    <summary className="cursor-pointer font-sans text-xs text-baby-text/50 hover:text-baby-text/70 transition-colors">Parsed JSON</summary>
+                    <pre className="mt-1 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-40">{JSON.stringify(apiTestResult.json, null, 2)}</pre>
+                  </details>
+                )}
+              </div>
+            )}
+
+            {/* Last shipping error captured by frontend */}
+            <div className="border-t border-baby-text/10 pt-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-sans text-xs font-medium text-baby-text/50">Último erro de frete (frontend)</p>
+                <button
+                  type="button"
+                  onClick={() => { clearLastShippingError(); toast('Erro limpo', { icon: '🧹', style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } }); }}
+                  className={`${miniBtn} bg-baby-pink/30 text-baby-text/50 hover:text-baby-text`}
+                >
+                  Limpar
+                </button>
+              </div>
+              {(() => {
+                const lastErr = getLastShippingError();
+                if (!lastErr) return <p className="font-sans text-xs text-green-600">Nenhum erro registrado ✓</p>;
+                return (
+                  <div className="bg-red-50 dark:bg-red-900/10 rounded-xl p-3 space-y-1">
+                    <p className="font-sans text-xs text-red-600"><strong>Status:</strong> {lastErr.status || 'N/A'}</p>
+                    <p className="font-sans text-xs text-red-600"><strong>Mensagem:</strong> {lastErr.message}</p>
+                    {lastErr.mockFallback && <p className="font-sans text-xs text-amber-500 font-semibold">⚠ Mock fallback ativo</p>}
+                    <p className="font-sans text-xs text-baby-text/30">{lastErr.timestamp}</p>
+                    {lastErr.rawSnippet && (
+                      <details>
+                        <summary className="cursor-pointer font-sans text-[10px] text-baby-text/40">Raw snippet</summary>
+                        <pre className="mt-1 font-mono text-[10px] text-baby-text/40 overflow-auto max-h-24 whitespace-pre-wrap">{lastErr.rawSnippet}</pre>
+                      </details>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
 
           {/* ═══════════════════════════════════════════════
