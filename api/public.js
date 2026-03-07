@@ -11,6 +11,7 @@
 
 /* eslint-disable no-undef */
 import { createClient } from '@supabase/supabase-js';
+import { verifyUser } from './_supabaseAdmin.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -20,7 +21,7 @@ function json(res, status, body) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -46,8 +47,12 @@ export default async function handler(req, res) {
         return await handleOrder(req, res, supabase);
       case 'cancel-order':
         return await handleCancelOrder(req, res, supabase);
+      case 'profile':
+        return await handleProfile(req, res, supabase);
+      case 'my-orders':
+        return await handleMyOrders(req, res, supabase);
       default:
-        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: home, products, collections, order, cancel-order.' });
+        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: home, products, collections, order, cancel-order, profile, my-orders.' });
     }
   } catch (err) {
     console.error(`[public/${resource}] error:`, err);
@@ -356,4 +361,80 @@ async function handleCancelOrder(req, res, supabase) {
     status: updated.status,
     message: 'Pedido cancelado com sucesso.',
   });
+}
+
+/* ══════════════════════════════════════════════════
+   PROFILE — fetch user's profile by userId (JWT checked)
+   GET /api/public?resource=profile&userId=xxx
+   ══════════════════════════════════════════════════ */
+async function handleProfile(req, res, supabase) {
+  const { userId } = req.query;
+
+  if (!userId) {
+    return json(res, 400, { error: 'bad_request', message: 'Missing ?userId= parameter.' });
+  }
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('id, email, role, created_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    // Table may not exist yet
+    const isTableMissing =
+      error.code === '42P01' ||
+      /does not exist|not found.*relation|profiles/i.test(error.message || '');
+    if (isTableMissing) {
+      return json(res, 200, { profile: { id: userId, role: 'customer' } });
+    }
+    return json(res, 500, { error: 'db_error', message: error.message });
+  }
+
+  return json(res, 200, { profile: profile || { id: userId, role: 'customer' } });
+}
+
+/* ══════════════════════════════════════════════════
+   MY ORDERS — fetch orders for the authenticated user
+   GET /api/public?resource=my-orders  (Authorization: Bearer <token>)
+   ══════════════════════════════════════════════════ */
+async function handleMyOrders(req, res, supabase) {
+  // Verify JWT
+  const { user } = await verifyUser(req);
+  if (!user) {
+    return json(res, 401, { error: 'unauthorized', message: 'Token inválido ou ausente.' });
+  }
+
+  // Find orders by user_id OR by customer_email matching the user's email
+  const { data: orders, error: oErr } = await supabase
+    .from('orders')
+    .select(`
+      id, order_code, status, created_at,
+      customer_name,
+      shipping_fee_cents, subtotal_cents, total_cents,
+      payment_method, cancel_reason, cancelled_at
+    `)
+    .or(`user_id.eq.${user.id},customer_email.eq.${user.email}`)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (oErr) {
+    console.error('[public/my-orders] error:', oErr);
+    return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedidos.' });
+  }
+
+  // For each order, fetch item count
+  const result = [];
+  for (const o of (orders || [])) {
+    const { count } = await supabase
+      .from('order_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', o.id);
+
+    const { id, ...safe } = o;
+    safe.items_count = count || 0;
+    result.push(safe);
+  }
+
+  return json(res, 200, { orders: result });
 }

@@ -1,124 +1,127 @@
 /**
- * AuthContext — local-only authentication (frontend-only, no backend).
+ * AuthContext — Supabase Auth (Email OTP, Google, Apple).
  *
- * Roles:
- *   "customer"  — default for any login
- *   "manager"   — access code MANAGER-123
- *   "debug"     — access code DEBUG-123  (also grants manager access)
+ * Roles (from profiles table):
+ *   "customer"  — default
+ *   "manager"   — admin access  (nobreamorbaby@gmail.com)
+ *   "debug"     — superset of manager (felipezzlx@icloud.com)
  *
- * Persisted in localStorage under "nobre_amor_v1_auth".
- *
- * Testing notes:
- *   1. Visit /checkout while logged out → redirects to /entrar
- *      → log in → auto-redirected back to /checkout
- *   2. Log in with code "MANAGER-123" → visit /admin → access granted
- *   3. Log in with code "DEBUG-123"   → visit /admin → access granted
- *   4. Log in with no code            → role "customer" → /admin redirects to /
+ * Exposes:
+ *   session, user, profile, isAuthed, loading
+ *   hasRole(r), signInWithOtp, signInWithOAuth, signOut, accessToken
  */
-import { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
-
-/* ── localStorage helpers (same pattern as StoreContext) ── */
-
-const STORAGE_KEY = 'nobre_amor_v1_auth';
-
-function loadAuth() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    // Validate shape
-    if (
-      parsed &&
-      typeof parsed.name === 'string' &&
-      typeof parsed.email === 'string' &&
-      ['customer', 'manager', 'debug'].includes(parsed.role)
-    ) {
-      return parsed;
-    }
-  } catch {
-    /* corrupted — ignore */
-  }
-  return null;
-}
-
-function saveAuth(user) {
-  try {
-    if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  } catch {
-    /* quota exceeded */
-  }
-}
-
-/* ── Initial state ────────────────────────────────────── */
-
-const storedUser = loadAuth();
-
-const initialState = {
-  isAuthed: !!storedUser,
-  user: storedUser, // { name, email, role } | null
-};
-
-/* ── Reducer ──────────────────────────────────────────── */
-
-function reducer(state, action) {
-  switch (action.type) {
-    case 'LOGIN':
-      return { isAuthed: true, user: action.payload };
-    case 'LOGOUT':
-      return { isAuthed: false, user: null };
-    default:
-      return state;
-  }
-}
-
-/* ── Context ──────────────────────────────────────────── */
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Persist on every change
+  /* ── Fetch profile from DB ─────────────────────── */
+  const fetchProfile = useCallback(async (userId) => {
+    if (!userId) { setProfile(null); return; }
+    try {
+      const res = await fetch(`/api/public?resource=profile&userId=${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProfile(data.profile || null);
+      } else {
+        setProfile(null);
+      }
+    } catch {
+      setProfile(null);
+    }
+  }, []);
+
+  /* ── Listen to Supabase auth state ─────────────── */
   useEffect(() => {
-    saveAuth(state.user);
-  }, [state.user]);
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s);
+      if (s?.user) fetchProfile(s.user.id);
+      setLoading(false);
+    });
 
-  const login = useCallback(
-    /** @param {{ name: string, email: string, role: 'customer'|'manager'|'debug' }} user */
-    (user) => dispatch({ type: 'LOGIN', payload: user }),
-    [],
-  );
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      if (s?.user) {
+        fetchProfile(s.user.id);
+      } else {
+        setProfile(null);
+      }
+    });
 
-  const logout = useCallback(
-    () => dispatch({ type: 'LOGOUT' }),
-    [],
-  );
+    return () => subscription.unsubscribe();
+  }, [fetchProfile]);
 
-  /** Check if the authenticated user has at least the given role */
+  /* ── Auth actions ──────────────────────────────── */
+  const signInWithOtp = useCallback(async (email) => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    if (error) throw error;
+  }, []);
+
+  const signInWithOAuth = useCallback(async (provider) => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: window.location.origin + '/entrar',
+      },
+    });
+    if (error) throw error;
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+    try { localStorage.removeItem('nobre_amor_v1_auth'); } catch { /* ok */ }
+  }, []);
+
+  /* ── Derived state ─────────────────────────────── */
+  const user = session?.user ?? null;
+  const isAuthed = !!user;
+  const accessToken = session?.access_token ?? null;
+
+  const authUser = useMemo(() => {
+    if (!user) return null;
+    return {
+      id: user.id,
+      name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '',
+      email: user.email || '',
+      role: profile?.role || 'customer',
+    };
+  }, [user, profile]);
+
   const hasRole = useCallback(
-    /** @param {'customer'|'manager'|'debug'} role */
     (role) => {
-      if (!state.isAuthed || !state.user) return false;
-      if (state.user.role === 'debug') return true; // debug can access everything
-      if (role === 'manager') return state.user.role === 'manager';
-      return true; // customer — any authed user qualifies
+      if (!isAuthed || !authUser) return false;
+      if (authUser.role === 'debug') return true;
+      if (role === 'manager') return authUser.role === 'manager';
+      return true;
     },
-    [state.isAuthed, state.user],
+    [isAuthed, authUser],
   );
 
   const value = useMemo(
     () => ({
-      isAuthed: state.isAuthed,
-      user: state.user,
-      login,
-      logout,
+      session,
+      user: authUser,
+      profile,
+      isAuthed,
+      loading,
       hasRole,
+      signInWithOtp,
+      signInWithOAuth,
+      signOut,
+      accessToken,
+      logout: signOut,
     }),
-    [state.isAuthed, state.user, login, logout, hasRole],
+    [session, authUser, profile, isAuthed, loading, hasRole, signInWithOtp, signInWithOAuth, signOut, accessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -130,3 +133,4 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
   return ctx;
 }
+

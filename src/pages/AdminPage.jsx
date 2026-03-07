@@ -100,22 +100,6 @@ export default function AdminPage() {
             </button>
           </div>
 
-          {/* Env var warning */}
-          {!import.meta.env.VITE_ADMIN_API_KEY && (
-            <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
-              <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
-                ⚠️ <strong>Chave de admin não configurada.</strong> Para que Pedidos, Produtos e Coleções funcionem, vá no <strong>Vercel → Settings → Environment Variables</strong> e adicione:
-              </p>
-              <ul className="font-sans text-xs text-amber-700 dark:text-amber-300 mt-2 list-disc pl-5 space-y-1">
-                <li><code>ADMIN_API_KEY</code> — chave secreta qualquer (ex: minha-chave-secreta-123)</li>
-                <li><code>VITE_ADMIN_API_KEY</code> — mesma chave (para o frontend enviar nos headers)</li>
-                <li><code>SUPABASE_URL</code> — URL do projeto Supabase</li>
-                <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — service role key do Supabase</li>
-              </ul>
-              <p className="font-sans text-xs text-amber-600 dark:text-amber-400 mt-2">Após adicionar, faça redeploy no Vercel.</p>
-            </div>
-          )}
-
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
             <div className="bg-surface rounded-xl p-4 shadow-soft text-center">

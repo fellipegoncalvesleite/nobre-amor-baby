@@ -49,11 +49,10 @@ const TABS = [
   { key: 'cancelled',  label: 'Cancelados',   icon: FiXCircle,     statuses: ['cancelled', 'rejected'] },
 ];
 
-const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
 export default function AdminOrdersPage() {
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const navigate = useNavigate();
 
   const [allOrders, setAllOrders] = useState([]);
@@ -66,21 +65,15 @@ export default function AdminOrdersPage() {
     setLoading(true);
     setError(null);
     try {
-      if (!ADMIN_KEY) {
-        setError('VITE_ADMIN_API_KEY não está configurada. Configure no .env ou no painel do Vercel.');
-        setLoading(false);
-        return;
-      }
-
       const params = new URLSearchParams({ resource: 'orders', limit: '200' });
       if (search.trim()) params.set('q', search.trim());
 
       const res = await fetch(`/api/admin?${params}`, {
-        headers: { 'x-admin-key': ADMIN_KEY },
+        headers: { 'Authorization': `Bearer ${accessToken}` },
       });
 
-      if (res.status === 401) {
-        setError('Não autorizado (401). Verifique VITE_ADMIN_API_KEY e ADMIN_API_KEY.');
+      if (res.status === 401 || res.status === 403) {
+        setError('Não autorizado. Faça login novamente.');
         setLoading(false);
         return;
       }
@@ -105,7 +98,7 @@ export default function AdminOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, accessToken]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -115,7 +108,7 @@ export default function AdminOrdersPage() {
     try {
       const res = await fetch(`/api/admin?resource=orders&id=${encodeURIComponent(orderCode)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-admin-key': ADMIN_KEY },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
         body: JSON.stringify({ status: 'done' }),
       });
       const data = await res.json();
@@ -171,18 +164,6 @@ export default function AdminOrdersPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          {/* Env var warning */}
-          {!ADMIN_KEY && (
-            <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
-              <div className="flex items-center gap-2">
-                <FiAlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0" size={18} />
-                <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
-                  <strong>VITE_ADMIN_API_KEY</strong> não está configurada.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
@@ -271,7 +252,7 @@ export default function AdminOrdersPage() {
                 <div>
                   <p className="font-medium mb-1">{error}</p>
                   <p className="text-xs text-red-600/70 dark:text-red-400/70">
-                    Verifique se <strong>ADMIN_API_KEY</strong> e <strong>VITE_ADMIN_API_KEY</strong> estão iguais.
+                    Verifique se você está logado com uma conta de gerente.
                   </p>
                 </div>
               </div>

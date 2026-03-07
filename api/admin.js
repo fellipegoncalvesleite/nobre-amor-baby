@@ -11,11 +11,13 @@
  *   resource=home         GET settings, PATCH update
  *   resource=upload       POST upload image
  *
- * All protected by x-admin-key header.
+ * Protected by JWT (Authorization: Bearer <token>) + manager/debug role.
+ * Falls back to x-admin-key header for backwards compatibility during migration.
  */
 
 /* eslint-disable no-undef */
 import { createClient } from '@supabase/supabase-js';
+import { requireManager } from './_supabaseAdmin.js';
 
 /* ── helpers ─────────────────────────────────────── */
 
@@ -48,14 +50,21 @@ const ALLOWED_STATUSES = ['new', 'confirmed', 'rejected', 'cancelled', 'packing'
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-key');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  /* ── auth ──────────────────────────────────────── */
-  const adminKey = process.env.ADMIN_API_KEY;
-  if (!adminKey) return json(res, 500, { error: 'missing_env', message: 'Admin key not configured.' });
-  if (req.headers['x-admin-key'] !== adminKey) {
-    return json(res, 401, { error: 'unauthorized', message: 'Invalid or missing x-admin-key.' });
+  /* ── auth: JWT first, fallback to x-admin-key ──── */
+  const authHeader = req.headers['authorization'] || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const mgr = await requireManager(req, res);
+    if (!mgr) return; // response already sent by requireManager
+  } else {
+    // Legacy x-admin-key fallback
+    const adminKey = process.env.ADMIN_API_KEY;
+    if (!adminKey) return json(res, 500, { error: 'missing_env', message: 'Admin key not configured.' });
+    if (req.headers['x-admin-key'] !== adminKey) {
+      return json(res, 401, { error: 'unauthorized', message: 'Invalid or missing authorization.' });
+    }
   }
 
   /* ── supabase ──────────────────────────────────── */

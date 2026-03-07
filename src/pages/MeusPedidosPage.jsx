@@ -2,14 +2,16 @@
  * MeusPedidosPage — customer order tracking page.
  *
  * Route: /meus-pedidos
- * Reads order codes from localStorage and fetches status from the public API.
+ * If logged in: fetches orders from /api/public?resource=my-orders (by user_id/email).
+ * If not logged in: reads order codes from localStorage as fallback.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiList, FiRefreshCw, FiChevronRight, FiPackage, FiAlertTriangle } from 'react-icons/fi';
+import { FiList, FiRefreshCw, FiChevronRight, FiPackage, FiAlertTriangle, FiLogIn } from 'react-icons/fi';
 import { formatPrice, focusRing, btnPrimary, btnSecondary } from '../lib/ui';
 import { getMyOrderCodes } from '../utils/orderMessage';
+import { useAuth } from '../context/AuthContext';
 
 const STATUS_MAP = {
   new: { label: 'Pendente', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
@@ -22,6 +24,7 @@ const STATUS_MAP = {
 };
 
 export default function MeusPedidosPage() {
+  const { isAuthed, accessToken } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,33 +32,45 @@ export default function MeusPedidosPage() {
   const fetchMyOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const codes = getMyOrderCodes();
-    if (codes.length === 0) {
-      setOrders([]);
-      setLoading(false);
-      return;
-    }
 
     try {
-      const results = await Promise.allSettled(
-        codes.map(async (code) => {
-          const res = await fetch(`/api/public?resource=order&orderCode=${encodeURIComponent(code)}`);
-          if (!res.ok) return null;
-          const data = await res.json();
-          return data.order || null;
-        }),
-      );
-      const fetched = results
-        .filter((r) => r.status === 'fulfilled' && r.value)
-        .map((r) => r.value);
-      setOrders(fetched);
+      if (isAuthed && accessToken) {
+        // Fetch from authenticated endpoint
+        const res = await fetch('/api/public?resource=my-orders', {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        });
+        if (!res.ok) throw new Error('Erro ao buscar pedidos.');
+        const data = await res.json();
+        setOrders(data.orders || []);
+      } else {
+        // Fallback: localStorage order codes
+        const codes = getMyOrderCodes();
+        if (codes.length === 0) {
+          setOrders([]);
+          setLoading(false);
+          return;
+        }
+
+        const results = await Promise.allSettled(
+          codes.map(async (code) => {
+            const res = await fetch(`/api/public?resource=order&orderCode=${encodeURIComponent(code)}`);
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data.order || null;
+          }),
+        );
+        const fetched = results
+          .filter((r) => r.status === 'fulfilled' && r.value)
+          .map((r) => r.value);
+        setOrders(fetched);
+      }
     } catch (err) {
       console.error('[MeusPedidosPage]', err);
       setError('Falha ao carregar pedidos. Tente novamente.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAuthed, accessToken]);
 
   useEffect(() => {
     fetchMyOrders();
@@ -69,6 +84,7 @@ export default function MeusPedidosPage() {
   };
 
   const codes = getMyOrderCodes();
+  const hasSource = isAuthed || codes.length > 0;
 
   return (
     <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
@@ -96,7 +112,7 @@ export default function MeusPedidosPage() {
               <div>
                 <h1 className="font-serif text-2xl sm:text-3xl text-baby-text">Meus Pedidos</h1>
                 <p className="font-sans text-sm text-baby-text/50">
-                  {codes.length} pedido{codes.length !== 1 ? 's' : ''} salvo{codes.length !== 1 ? 's' : ''}
+                  {orders.length} pedido{orders.length !== 1 ? 's' : ''} encontrado{orders.length !== 1 ? 's' : ''}
                 </p>
               </div>
             </div>
@@ -114,6 +130,23 @@ export default function MeusPedidosPage() {
             </button>
           </div>
 
+          {/* Login CTA when not authed */}
+          {!isAuthed && (
+            <div className="mb-6 p-4 rounded-xl bg-baby-pink/20 border border-baby-pink/40">
+              <div className="flex items-center gap-3">
+                <FiLogIn size={18} className="text-baby-accent shrink-0" />
+                <div>
+                  <p className="font-sans text-sm text-baby-text">
+                    <Link to="/entrar" state={{ from: '/meus-pedidos' }} className="text-baby-accent font-medium hover:underline">
+                      Faça login
+                    </Link>{' '}
+                    para ver seus pedidos em qualquer dispositivo.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error */}
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6 flex items-center gap-3 font-sans text-sm text-red-700 dark:text-red-300">
@@ -123,18 +156,18 @@ export default function MeusPedidosPage() {
           )}
 
           {/* Empty state */}
-          {!loading && codes.length === 0 && (
+          {!loading && !hasSource && (
             <div className="text-center py-16">
               <FiPackage size={40} className="mx-auto text-baby-text/20 mb-4" />
               <p className="font-sans text-baby-text/50 mb-6">
-                Você ainda não fez nenhum pedido neste dispositivo.
+                Você ainda não fez nenhum pedido.
               </p>
               <Link to="/" className={btnPrimary}>Explorar Produtos</Link>
             </div>
           )}
 
           {/* Loading */}
-          {loading && codes.length > 0 && (
+          {loading && hasSource && (
             <div className="text-center py-16">
               <FiRefreshCw size={24} className="mx-auto animate-spin text-baby-accent mb-2" />
               <p className="font-sans text-sm text-baby-text/50">Carregando pedidos…</p>
@@ -178,8 +211,8 @@ export default function MeusPedidosPage() {
             </div>
           )}
 
-          {/* No results but had codes */}
-          {!loading && codes.length > 0 && orders.length === 0 && !error && (
+          {/* No results but had source */}
+          {!loading && hasSource && orders.length === 0 && !error && (
             <div className="text-center py-16">
               <FiPackage size={40} className="mx-auto text-baby-text/20 mb-4" />
               <p className="font-sans text-baby-text/50 mb-2">
