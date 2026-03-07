@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Lato:wght@300;400;500;600&display=swap');
+
+@import "tailwindcss";
+
+/* Class-based dark mode (instead of default media query) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Custom theme configuration for Tailwind v4 */
+@theme {
+  --color-baby-pink: #F0DAE8;
+  --color-baby-pink-light: #F8EDF4;
+  --color-baby-pink-dark: #E5C7D9;
+  --color-baby-text: #373438;
+  --color-baby-accent: #A49AAE;
+  --color-baby-accent-light: #C4BCCB;
+  --color-baby-cream: #FDF8FB;
+  --color-surface: #FFFFFF;
+  
+  --font-family-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-family-sans: 'Lato', system-ui, sans-serif;
+  
+  --shadow-soft: 0 2px 15px rgba(164, 154, 174, 0.15);
+  --shadow-soft-lg: 0 4px 25px rgba(164, 154, 174, 0.2);
+}
+
+/* ── Dark palette ─────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+
+  --color-baby-cream: #1C1720;
+  --color-surface: #26202E;
+  --color-baby-pink: #362B34;
+  --color-baby-pink-light: #2A2230;
+  --color-baby-pink-dark: #483A46;
+  --color-baby-text: #E8E2EC;
+  --color-baby-accent: #B8ADC4;
+  --color-baby-accent-light: #7D7488;
+
+  --shadow-soft: 0 2px 15px rgba(0, 0, 0, 0.35);
+  --shadow-soft-lg: 0 4px 25px rgba(0, 0, 0, 0.45);
+}
+
+/* Custom base styles */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    font-family: var(--font-family-sans);
+    color: var(--color-baby-text);
+    background-color: var(--color-baby-cream);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Focus visible styles for better accessibility */
+  :focus-visible {
+    outline: 2px solid var(--color-baby-accent);
+    outline-offset: 2px;
+  }
+  
+  /* Remove focus ring for mouse users */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background-color: var(--color-baby-pink-light);
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(164, 154, 174, 0.5);
+    border-radius: 9999px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(164, 154, 174, 0.7);
+  }
+
+  .dark ::-webkit-scrollbar-track {
+    background-color: var(--color-baby-cream);
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: rgba(184, 173, 196, 0.3);
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(184, 173, 196, 0.5);
+  }
+}
+
+@layer utilities {
+  /* Text clamp utility */
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* Toast customization */
+[data-sonner-toast] {
+  font-family: 'Lato', sans-serif;
+}

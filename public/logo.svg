@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#F0DAE8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E5C7D9;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <text x="10" y="45" font-family="Georgia, 'Playfair Display', serif" font-size="28" fill="#373438" font-weight="500">Nobre Amor</text>
+  <text x="10" y="68" font-family="Georgia, 'Playfair Display', serif" font-size="18" fill="#A49AAE" letter-spacing="4">BABY</text>
+  <circle cx="175" cy="40" r="18" fill="url(#grad)" stroke="#A49AAE" stroke-width="1"/>
+  <text x="175" y="46" font-family="Georgia, serif" font-size="14" fill="#373438" text-anchor="middle">♡</text>
+</svg>
