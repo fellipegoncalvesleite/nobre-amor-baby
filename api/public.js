@@ -249,8 +249,7 @@ async function handleOrder(req, res, supabase) {
       address_neighborhood, address_city, address_uf,
       shipping_fee_cents, shipping_eta_text, shipping_provider,
       subtotal_cents, total_cents,
-      payment_method,
-      rejected_reason, confirmed_at, rejected_at
+      payment_method
     `)
     .eq('order_code', orderCode)
     .maybeSingle();
