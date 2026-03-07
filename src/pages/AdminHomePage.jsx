@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FiHome, FiRefreshCw, FiArrowLeft, FiArrowUp, FiArrowDown,
-  FiGrid, FiPackage, FiX, FiPlus,
+  FiGrid, FiPackage, FiX, FiPlus, FiAlertTriangle,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing, btnPrimary, btnSecondary } from '../lib/ui';
@@ -23,15 +23,36 @@ import {
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
+const MIGRATION_SQL = `-- Execute no Supabase → SQL Editor
+CREATE TABLE IF NOT EXISTS homepage_settings (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  key                 text UNIQUE NOT NULL,
+  collections_enabled boolean DEFAULT true,
+  featured_enabled    boolean DEFAULT true,
+  collections_title   text DEFAULT 'Coleções',
+  featured_title      text DEFAULT 'Destaques',
+  collections_order   uuid[] DEFAULT '{}',
+  featured_order      uuid[] DEFAULT '{}',
+  updated_at          timestamptz DEFAULT now()
+);
+
+INSERT INTO homepage_settings (key)
+VALUES ('home')
+ON CONFLICT (key) DO NOTHING;`;
+
 export default function AdminHomePage({ embedded = false }) {
   const [settings, setSettings] = useState(null);
   const [allCollections, setAllCollections] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [migrationNeeded, setMigrationNeeded] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setFetchError('');
+    setMigrationNeeded(false);
     try {
       const [homeSettings, colls, prods] = await Promise.all([
         getHomeSettings(),
@@ -42,7 +63,12 @@ export default function AdminHomePage({ embedded = false }) {
       setAllCollections(colls);
       setAllProducts(prods);
     } catch (err) {
-      toast.error('Falha ao carregar: ' + err.message, { style: toastStyle });
+      if (err.code === 'missing_table') {
+        setMigrationNeeded(true);
+      } else {
+        setFetchError(err.message || 'Erro desconhecido');
+        toast.error('Falha ao carregar: ' + err.message, { style: toastStyle });
+      }
     } finally {
       setLoading(false);
     }
@@ -109,10 +135,71 @@ export default function AdminHomePage({ embedded = false }) {
 
   if (loading) {
     return (
-      <div className={embedded ? 'text-center py-12' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen'}>
-        <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6 text-center py-12'}>
-          <FiRefreshCw size={24} className="mx-auto animate-spin text-baby-accent mb-2" />
-          <p className="font-sans text-sm text-baby-text/50">Carregando…</p>
+      <div className={embedded ? 'text-center py-12' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream dark:bg-gray-900 min-h-screen'}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6 py-12'}>
+          <div className="space-y-4 animate-pulse">
+            <div className="h-8 bg-baby-pink/40 dark:bg-gray-700 rounded-xl w-48" />
+            <div className="h-32 bg-baby-pink/30 dark:bg-gray-800 rounded-2xl" />
+            <div className="h-32 bg-baby-pink/30 dark:bg-gray-800 rounded-2xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Migration needed ─────────────────────────── */
+  if (migrationNeeded) {
+    return (
+      <div className={embedded ? 'py-8' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream dark:bg-gray-900 min-h-screen'}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6'}>
+          <div className="bg-surface rounded-2xl shadow-soft p-6 text-center">
+            <div className="w-14 h-14 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FiAlertTriangle className="text-amber-500" size={26} />
+            </div>
+            <h2 className="font-serif text-xl text-baby-text dark:text-gray-100 mb-2">Configuração necessária</h2>
+            <p className="font-sans text-sm text-baby-text/60 dark:text-gray-400 mb-4">
+              A tabela <code className="bg-baby-pink/30 dark:bg-gray-700 px-1.5 py-0.5 rounded text-xs">homepage_settings</code> ainda não existe no banco de dados.
+            </p>
+            <p className="font-sans text-sm text-baby-text/60 dark:text-gray-400 mb-3">
+              Execute o SQL abaixo no <strong>Editor SQL do Supabase</strong>:
+            </p>
+            <pre className="text-left bg-gray-900 text-green-300 rounded-xl p-4 text-xs overflow-x-auto mb-4 whitespace-pre-wrap">
+              {MIGRATION_SQL}
+            </pre>
+            <button
+              type="button"
+              onClick={fetchData}
+              className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full font-sans text-sm font-medium transition-colors ${btnPrimary}`}
+            >
+              <FiRefreshCw size={14} />
+              Recarregar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Fetch error ──────────────────────────────── */
+  if (fetchError && !settings) {
+    return (
+      <div className={embedded ? 'py-8' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream dark:bg-gray-900 min-h-screen'}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6'}>
+          <div className="bg-surface rounded-2xl shadow-soft p-6 text-center">
+            <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FiAlertTriangle className="text-red-500" size={26} />
+            </div>
+            <h2 className="font-serif text-xl text-baby-text dark:text-gray-100 mb-2">Erro ao carregar</h2>
+            <p className="font-sans text-sm text-baby-text/60 dark:text-gray-400 mb-4">{fetchError}</p>
+            <button
+              type="button"
+              onClick={fetchData}
+              className={`inline-flex items-center gap-1.5 px-5 py-2 rounded-full font-sans text-sm font-medium transition-colors ${btnPrimary}`}
+            >
+              <FiRefreshCw size={14} />
+              Tentar novamente
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -120,9 +207,17 @@ export default function AdminHomePage({ embedded = false }) {
 
   if (!settings) {
     return (
-      <div className={embedded ? 'text-center py-12' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen'}>
+      <div className={embedded ? 'text-center py-12' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream dark:bg-gray-900 min-h-screen'}>
         <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6 text-center py-12'}>
-          <p className="font-sans text-sm text-baby-text/50">Configurações não encontradas. Execute a migration_003 no Supabase.</p>
+          <p className="font-sans text-sm text-baby-text/50 dark:text-gray-400">Nenhuma configuração encontrada.</p>
+          <button
+            type="button"
+            onClick={fetchData}
+            className={`mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-full font-sans text-sm ${btnSecondary}`}
+          >
+            <FiRefreshCw size={14} />
+            Recarregar
+          </button>
         </div>
       </div>
     );

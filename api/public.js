@@ -55,32 +55,60 @@ export default async function handler(req, res) {
    HOME — homepage config with resolved data
    ══════════════════════════════════════════════════ */
 async function handleHome(req, res, supabase) {
+  const HOME_DEFAULTS = {
+    collections_enabled: true,
+    featured_enabled: true,
+    collections_title: 'Coleções',
+    featured_title: 'Destaques',
+    collections_order: [],
+    featured_order: [],
+  };
+
   // 1. Homepage settings
   const { data: settings, error: sErr } = await supabase
     .from('homepage_settings')
     .select('*')
     .eq('key', 'home')
-    .single();
+    .maybeSingle();
 
-  if (sErr) return json(res, 500, { error: 'db_error', message: sErr.message });
+  if (sErr) {
+    // Table missing — return sensible defaults so storefront still works
+    const isTableMissing =
+      sErr.code === '42P01' ||
+      sErr.code === 'PGRST204' ||
+      /does not exist|not found.*relation|homepage_settings/i.test(sErr.message || '');
+
+    if (isTableMissing) {
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+      return json(res, 200, {
+        ...HOME_DEFAULTS,
+        collections: [],
+        featured: [],
+      });
+    }
+    return json(res, 500, { error: 'db_error', message: sErr.message });
+  }
+
+  // Use row data or defaults if row is missing
+  const cfg = settings || HOME_DEFAULTS;
 
   const result = {
-    collections_enabled: settings.collections_enabled,
-    featured_enabled: settings.featured_enabled,
-    collections_title: settings.collections_title,
-    featured_title: settings.featured_title,
+    collections_enabled: cfg.collections_enabled,
+    featured_enabled: cfg.featured_enabled,
+    collections_title: cfg.collections_title,
+    featured_title: cfg.featured_title,
     collections: [],
     featured: [],
   };
 
   // 2. Resolve collections
-  if (settings.collections_enabled) {
+  if (cfg.collections_enabled) {
     let query = supabase.from('collections').select('*').eq('is_active', true);
 
-    if (settings.collections_order?.length) {
-      const { data: colls } = await query.in('id', settings.collections_order);
+    if (cfg.collections_order?.length) {
+      const { data: colls } = await query.in('id', cfg.collections_order);
       const orderMap = {};
-      settings.collections_order.forEach((id, i) => { orderMap[id] = i; });
+      cfg.collections_order.forEach((id, i) => { orderMap[id] = i; });
       result.collections = (colls || []).sort(
         (a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999)
       );
@@ -91,15 +119,15 @@ async function handleHome(req, res, supabase) {
   }
 
   // 3. Resolve featured products
-  if (settings.featured_enabled) {
+  if (cfg.featured_enabled) {
     let query = supabase.from('products').select('*')
       .eq('is_public', true)
       .eq('in_stock', true);
 
-    if (settings.featured_order?.length) {
-      const { data: prods } = await query.in('id', settings.featured_order);
+    if (cfg.featured_order?.length) {
+      const { data: prods } = await query.in('id', cfg.featured_order);
       const orderMap = {};
-      settings.featured_order.forEach((id, i) => { orderMap[id] = i; });
+      cfg.featured_order.forEach((id, i) => { orderMap[id] = i; });
       result.featured = (prods || []).sort(
         (a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999)
       );

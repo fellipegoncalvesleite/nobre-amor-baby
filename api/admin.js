@@ -537,14 +537,47 @@ async function handleHome(req, res, supabase) {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use GET or PATCH.' });
   }
 
+  const HOME_DEFAULTS = {
+    key: 'home',
+    collections_enabled: true,
+    featured_enabled: true,
+    collections_title: 'Coleções',
+    featured_title: 'Destaques',
+    collections_order: [],
+    featured_order: [],
+  };
+
+  const isTableMissing = (err) =>
+    err.code === '42P01' ||
+    err.code === 'PGRST204' ||
+    /does not exist|not found.*relation|homepage_settings/i.test(err.message || '');
+
   if (req.method === 'GET') {
     const { data, error } = await supabase
       .from('homepage_settings')
       .select('*')
       .eq('key', 'home')
-      .single();
+      .maybeSingle();
 
-    if (error) return json(res, 500, { error: 'db_error', message: error.message });
+    if (error) {
+      if (isTableMissing(error)) {
+        return json(res, 503, { error: 'missing_table', message: 'Tabela homepage_settings não existe. Execute a migration 003_homepage_settings.sql no Supabase.' });
+      }
+      return json(res, 500, { error: 'db_error', message: error.message });
+    }
+
+    if (!data) {
+      // Row missing — insert default and return it
+      const { data: inserted, error: insertErr } = await supabase
+        .from('homepage_settings')
+        .insert(HOME_DEFAULTS)
+        .select()
+        .single();
+
+      if (insertErr) return json(res, 500, { error: 'db_error', message: insertErr.message });
+      return json(res, 200, { settings: inserted });
+    }
+
     return json(res, 200, { settings: data });
   }
 
@@ -568,9 +601,27 @@ async function handleHome(req, res, supabase) {
     .update(updates)
     .eq('key', 'home')
     .select()
-    .single();
+    .maybeSingle();
 
-  if (error) return json(res, 500, { error: 'db_error', message: error.message });
+  if (error) {
+    if (isTableMissing(error)) {
+      return json(res, 503, { error: 'missing_table', message: 'Tabela homepage_settings não existe. Execute a migration 003_homepage_settings.sql no Supabase.' });
+    }
+    return json(res, 500, { error: 'db_error', message: error.message });
+  }
+
+  if (!data) {
+    // No row to update — upsert with defaults + updates
+    const { data: inserted, error: insertErr } = await supabase
+      .from('homepage_settings')
+      .insert({ ...HOME_DEFAULTS, ...updates })
+      .select()
+      .single();
+
+    if (insertErr) return json(res, 500, { error: 'db_error', message: insertErr.message });
+    return json(res, 200, { settings: inserted });
+  }
+
   return json(res, 200, { settings: data });
 }
 

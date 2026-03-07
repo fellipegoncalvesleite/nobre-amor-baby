@@ -17,7 +17,11 @@ const headers = (extra = {}) => ({
 async function request(url, options = {}) {
   const res = await fetch(url, { headers: headers(), ...options });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Erro na requisição');
+  if (!res.ok) {
+    const err = new Error(data.message || 'Erro na requisição');
+    err.code = data.error;
+    throw err;
+  }
   return data;
 }
 
