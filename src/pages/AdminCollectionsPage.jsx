@@ -3,12 +3,12 @@
  *
  * Route: /admin/colecoes-gerenciar  (ProtectedRoute role="manager")
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiGrid, FiPlus, FiRefreshCw, FiEdit2,
-  FiTrash2, FiX, FiArrowLeft, FiCheck, FiXCircle,
+  FiTrash2, FiX, FiArrowLeft, FiCheck, FiXCircle, FiInfo,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { focusRing, btnPrimary, btnSecondary } from '../lib/ui';
@@ -17,6 +17,7 @@ import {
   uploadImage,
 } from '../lib/adminApi';
 import ImageUploader from '../components/admin/ImageUploader';
+import { getSeededCollections } from '../adminSeeds/seedCollections';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -31,19 +32,32 @@ const emptyForm = {
 export default function AdminCollectionsPage({ embedded = false }) {
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [seededMode, setSeededMode] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
 
+  const localCollectionsRef = useRef(null);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const colls = await listCollections();
-      setCollections(colls);
-    } catch (err) {
-      toast.error('Falha ao carregar coleções: ' + err.message, { style: toastStyle });
+      if (colls.length === 0) {
+        if (!localCollectionsRef.current) localCollectionsRef.current = getSeededCollections();
+        setCollections(localCollectionsRef.current);
+        setSeededMode(true);
+      } else {
+        setCollections(colls);
+        setSeededMode(false);
+        localCollectionsRef.current = null;
+      }
+    } catch {
+      if (!localCollectionsRef.current) localCollectionsRef.current = getSeededCollections();
+      setCollections(localCollectionsRef.current);
+      setSeededMode(true);
     } finally {
       setLoading(false);
     }
@@ -84,6 +98,16 @@ export default function AdminCollectionsPage({ embedded = false }) {
     return url;
   };
 
+  const buildPayload = () => ({
+    name: form.name.trim(),
+    slug: form.slug.trim() || form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+    description: form.description.trim(),
+    is_active: form.isActive,
+    image_url: form.images[0]?.src && !form.images[0].src.startsWith('data:')
+      ? form.images[0].src
+      : null,
+  });
+
   const handleSave = async () => {
     if (!form.name.trim()) {
       toast.error('Nome é obrigatório.', { style: toastStyle });
@@ -91,16 +115,33 @@ export default function AdminCollectionsPage({ embedded = false }) {
     }
 
     setSaving(true);
+
+    if (seededMode) {
+      const payload = buildPayload();
+      const now = new Date().toISOString();
+
+      if (editingId) {
+        const updated = collections.map((c) =>
+          c.id === editingId ? { ...c, ...payload, updated_at: now } : c,
+        );
+        localCollectionsRef.current = updated;
+        setCollections(updated);
+        toast.success('Coleção atualizada (local)!', { style: toastStyle });
+      } else {
+        const newColl = { id: `local-${Date.now()}`, ...payload, created_at: now, updated_at: now };
+        const updated = [newColl, ...collections];
+        localCollectionsRef.current = updated;
+        setCollections(updated);
+        toast.success('Coleção criada (local)!', { style: toastStyle });
+      }
+
+      setModalOpen(false);
+      setSaving(false);
+      return;
+    }
+
     try {
-      const payload = {
-        name: form.name.trim(),
-        slug: form.slug.trim() || undefined,
-        description: form.description.trim(),
-        is_active: form.isActive,
-        image_url: form.images[0]?.src && !form.images[0].src.startsWith('data:')
-          ? form.images[0].src
-          : null,
-      };
+      const payload = buildPayload();
 
       if (editingId) {
         await updateCollection(editingId, payload);
@@ -121,6 +162,15 @@ export default function AdminCollectionsPage({ embedded = false }) {
 
   const handleDelete = async (coll) => {
     if (!confirm(`Excluir coleção "${coll.name}"? Produtos associados ficarão sem coleção.`)) return;
+
+    if (seededMode) {
+      const updated = collections.filter((c) => c.id !== coll.id);
+      localCollectionsRef.current = updated;
+      setCollections(updated);
+      toast.success('Coleção excluída (local).', { style: toastStyle });
+      return;
+    }
+
     try {
       await deleteCollection(coll.id);
       toast.success('Coleção excluída.', { style: toastStyle });
@@ -131,6 +181,19 @@ export default function AdminCollectionsPage({ embedded = false }) {
   };
 
   const handleToggleActive = async (coll) => {
+    if (seededMode) {
+      const updated = collections.map((c) =>
+        c.id === coll.id ? { ...c, is_active: !c.is_active } : c,
+      );
+      localCollectionsRef.current = updated;
+      setCollections(updated);
+      toast.success(
+        coll.is_active ? 'Coleção desativada (local).' : 'Coleção ativada (local)!',
+        { style: toastStyle },
+      );
+      return;
+    }
+
     try {
       await updateCollection(coll.id, { is_active: !coll.is_active });
       toast.success(coll.is_active ? 'Coleção desativada.' : 'Coleção ativada!', { style: toastStyle });
@@ -141,39 +204,50 @@ export default function AdminCollectionsPage({ embedded = false }) {
   };
 
   const Wrapper = embedded ? 'div' : 'section';
-  const wrapperClass = embedded ? '' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen';
+  const wrapperClass = embedded ? '' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream dark:bg-gray-900 min-h-screen';
 
   return (
     <Wrapper className={wrapperClass}>
       <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6'}>
         {/* Breadcrumb */}
         {!embedded && (
-        <nav className="mb-6 font-sans text-sm text-baby-text/60">
+        <nav className="mb-6 font-sans text-sm text-baby-text/60 dark:text-gray-400">
           <ol className="flex items-center gap-1.5">
             <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
             <li aria-hidden="true">/</li>
             <li><Link to="/admin" className="hover:text-baby-accent transition-colors">Painel</Link></li>
             <li aria-hidden="true">/</li>
-            <li className="text-baby-text font-medium">Coleções</li>
+            <li className="text-baby-text dark:text-gray-200 font-medium">Coleções</li>
           </ol>
         </nav>
         )}
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+
+          {/* Seeded mode banner */}
+          {seededMode && (
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+              <FiInfo className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={16} />
+              <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
+                <strong>Modo catálogo (exemplo):</strong> conecte o banco para salvar permanentemente.
+              </p>
+            </div>
+          )}
+
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-baby-pink/40 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-baby-pink/40 dark:bg-baby-pink/20 rounded-full flex items-center justify-center">
                 <FiGrid className="text-baby-accent" size={22} />
               </div>
-              <h1 className="font-serif text-2xl sm:text-3xl text-baby-text">Coleções</h1>
+              <h1 className="font-serif text-2xl sm:text-3xl text-baby-text dark:text-gray-100">Coleções</h1>
             </div>
 
             <div className="flex gap-2">
               <button type="button" onClick={fetchData}
                 className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full font-sans text-sm
-                           border border-baby-text/15 text-baby-text/60 hover:text-baby-accent
-                           hover:border-baby-accent transition-colors ${focusRing}`}>
+                           border border-baby-text/15 dark:border-gray-600 text-baby-text/60 dark:text-gray-400
+                           hover:text-baby-accent hover:border-baby-accent transition-colors ${focusRing}`}>
                 <FiRefreshCw size={14} />
                 Atualizar
               </button>
@@ -190,7 +264,7 @@ export default function AdminCollectionsPage({ embedded = false }) {
           {loading && (
             <div className="text-center py-12">
               <FiRefreshCw size={24} className="mx-auto animate-spin text-baby-accent mb-2" />
-              <p className="font-sans text-sm text-baby-text/50">Carregando…</p>
+              <p className="font-sans text-sm text-baby-text/50 dark:text-gray-400">Carregando…</p>
             </div>
           )}
 
@@ -203,12 +277,12 @@ export default function AdminCollectionsPage({ embedded = false }) {
                     <img src={c.image_url} alt={c.name} className="w-full h-36 object-cover" />
                   ) : (
                     <div className="w-full h-36 bg-baby-pink/20 flex items-center justify-center">
-                      <FiGrid size={28} className="text-baby-text/20" />
+                      <FiGrid size={28} className="text-baby-text/20 dark:text-gray-600" />
                     </div>
                   )}
                   <div className="p-4">
                     <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-serif text-base text-baby-text">{c.name}</h3>
+                      <h3 className="font-serif text-base text-baby-text dark:text-gray-100">{c.name}</h3>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium
                         ${c.is_active
                           ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
@@ -216,18 +290,18 @@ export default function AdminCollectionsPage({ embedded = false }) {
                         {c.is_active ? 'Ativa' : 'Inativa'}
                       </span>
                     </div>
-                    <p className="font-sans text-xs text-baby-text/40 mb-3">{c.slug}</p>
+                    <p className="font-sans text-xs text-baby-text/40 dark:text-gray-500 mb-3">{c.slug}</p>
                     {c.description && (
-                      <p className="font-sans text-sm text-baby-text/60 mb-3 line-clamp-2">{c.description}</p>
+                      <p className="font-sans text-sm text-baby-text/60 dark:text-gray-400 mb-3 line-clamp-2">{c.description}</p>
                     )}
                     <div className="flex gap-1 justify-end">
                       <button type="button" onClick={() => handleToggleActive(c)}
-                        className={`p-2 rounded-full hover:bg-baby-pink/40 transition-colors ${focusRing}`}
+                        className={`p-2 rounded-full hover:bg-baby-pink/40 dark:hover:bg-gray-700 transition-colors ${focusRing}`}
                         aria-label={c.is_active ? 'Desativar' : 'Ativar'} title={c.is_active ? 'Desativar' : 'Ativar'}>
                         {c.is_active ? <FiXCircle size={15} /> : <FiCheck size={15} />}
                       </button>
                       <button type="button" onClick={() => openEdit(c)}
-                        className={`p-2 rounded-full hover:bg-baby-pink/40 transition-colors ${focusRing}`}
+                        className={`p-2 rounded-full hover:bg-baby-pink/40 dark:hover:bg-gray-700 transition-colors ${focusRing}`}
                         aria-label="Editar" title="Editar">
                         <FiEdit2 size={15} />
                       </button>
@@ -242,19 +316,21 @@ export default function AdminCollectionsPage({ embedded = false }) {
               ))}
 
               {collections.length === 0 && !loading && (
-                <p className="font-sans text-baby-text/40 text-sm text-center py-8 col-span-full">
+                <p className="font-sans text-baby-text/40 dark:text-gray-500 text-sm text-center py-8 col-span-full">
                   Nenhuma coleção encontrada.
                 </p>
               )}
             </div>
           )}
 
+          {!embedded && (
           <div className="mt-8 flex flex-wrap gap-3 justify-center">
             <Link to="/admin" className={btnSecondary}>
               <FiArrowLeft size={14} className="inline -mt-0.5 mr-1" />
               Voltar ao painel
             </Link>
           </div>
+          )}
         </motion.div>
       </div>
 
@@ -277,11 +353,11 @@ export default function AdminCollectionsPage({ embedded = false }) {
               className="bg-surface rounded-2xl shadow-xl w-full max-w-lg p-6 my-4"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-serif text-lg text-baby-text">
+                <h3 className="font-serif text-lg text-baby-text dark:text-gray-100">
                   {editingId ? 'Editar coleção' : 'Nova coleção'}
                 </h3>
                 <button type="button" onClick={() => setModalOpen(false)}
-                  className={`p-1.5 rounded-full hover:bg-baby-pink/40 transition-colors ${focusRing}`}
+                  className={`p-1.5 rounded-full hover:bg-baby-pink/40 dark:hover:bg-gray-700 transition-colors ${focusRing}`}
                   aria-label="Fechar">
                   <FiX size={18} />
                 </button>
@@ -289,30 +365,30 @@ export default function AdminCollectionsPage({ embedded = false }) {
 
               <div className="space-y-4">
                 <div>
-                  <label className="font-sans text-sm font-medium text-baby-text block mb-1">Nome *</label>
+                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Nome *</label>
                   <input name="name" value={form.name} onChange={handleChange}
-                    className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-3 py-2.5
-                               font-sans text-sm text-baby-text ${focusRing}`} />
+                    className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                               font-sans text-sm text-baby-text dark:text-gray-100 ${focusRing}`} />
                 </div>
 
                 <div>
-                  <label className="font-sans text-sm font-medium text-baby-text block mb-1">Slug (auto se vazio)</label>
+                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Slug (auto se vazio)</label>
                   <input name="slug" value={form.slug} onChange={handleChange}
                     placeholder="ex: colecao-verao"
-                    className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-3 py-2.5
-                               font-sans text-sm text-baby-text placeholder-baby-text/40 ${focusRing}`} />
+                    className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                               font-sans text-sm text-baby-text dark:text-gray-100 placeholder-baby-text/40 dark:placeholder-gray-500 ${focusRing}`} />
                 </div>
 
                 <div>
-                  <label className="font-sans text-sm font-medium text-baby-text block mb-1">Descrição</label>
+                  <label className="font-sans text-sm font-medium text-baby-text dark:text-gray-200 block mb-1">Descrição</label>
                   <textarea name="description" value={form.description} onChange={handleChange} rows={2}
-                    className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-3 py-2.5
-                               font-sans text-sm text-baby-text resize-y ${focusRing}`} />
+                    className={`w-full rounded-xl border border-baby-text/15 dark:border-gray-600 bg-baby-cream dark:bg-gray-800 px-3 py-2.5
+                               font-sans text-sm text-baby-text dark:text-gray-100 resize-y ${focusRing}`} />
                 </div>
 
-                <label className="flex items-center gap-2 font-sans text-sm text-baby-text cursor-pointer">
+                <label className="flex items-center gap-2 font-sans text-sm text-baby-text dark:text-gray-200 cursor-pointer">
                   <input type="checkbox" name="isActive" checked={form.isActive} onChange={handleChange}
-                    className="rounded border-baby-text/30" />
+                    className="rounded border-baby-text/30 dark:border-gray-600" />
                   Ativa (visível na loja)
                 </label>
 
@@ -326,10 +402,10 @@ export default function AdminCollectionsPage({ embedded = false }) {
                 />
               </div>
 
-              <div className="flex gap-2 justify-end mt-6 pt-4 border-t border-baby-pink/40">
+              <div className="flex gap-2 justify-end mt-6 pt-4 border-t border-baby-pink/40 dark:border-gray-700">
                 <button type="button" onClick={() => setModalOpen(false)}
-                  className={`px-4 py-2 rounded-full font-sans text-sm border border-baby-text/15
-                             text-baby-text/60 hover:text-baby-accent hover:border-baby-accent
+                  className={`px-4 py-2 rounded-full font-sans text-sm border border-baby-text/15 dark:border-gray-600
+                             text-baby-text/60 dark:text-gray-400 hover:text-baby-accent hover:border-baby-accent
                              transition-colors ${focusRing}`}>
                   Cancelar
                 </button>
