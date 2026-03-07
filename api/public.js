@@ -19,12 +19,12 @@ function json(res, status, body) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  if (req.method !== 'GET') {
-    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET.' });
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET or POST.' });
   }
 
   const sbUrl = process.env.SUPABASE_URL;
@@ -44,8 +44,10 @@ export default async function handler(req, res) {
         return await handleCollections(req, res, supabase);
       case 'order':
         return await handleOrder(req, res, supabase);
+      case 'cancel-order':
+        return await handleCancelOrder(req, res, supabase);
       default:
-        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: home, products, collections, order.' });
+        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: home, products, collections, order, cancel-order.' });
     }
   } catch (err) {
     console.error(`[public/${resource}] error:`, err);
@@ -249,7 +251,8 @@ async function handleOrder(req, res, supabase) {
       address_neighborhood, address_city, address_uf,
       shipping_fee_cents, shipping_eta_text, shipping_provider,
       subtotal_cents, total_cents,
-      payment_method
+      payment_method,
+      cancel_reason, cancelled_at
     `)
     .eq('order_code', orderCode)
     .maybeSingle();
@@ -277,4 +280,80 @@ async function handleOrder(req, res, supabase) {
 
   res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=30');
   return json(res, 200, { order: result });
+}
+
+/* ══════════════════════════════════════════════════
+   CANCEL ORDER — customer cancels their own order
+   POST /api/public?resource=cancel-order
+   Body: { orderCode, reason }
+   Only allowed when status is 'new' (pending).
+   ══════════════════════════════════════════════════ */
+async function handleCancelOrder(req, res, supabase) {
+  if (req.method !== 'POST') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
+  }
+
+  const body = req.body || {};
+  const { orderCode, reason } = body;
+
+  if (!orderCode || typeof orderCode !== 'string' || orderCode.length < 5) {
+    return json(res, 400, { error: 'bad_request', message: 'orderCode é obrigatório.' });
+  }
+  if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
+    return json(res, 400, { error: 'bad_request', message: 'Informe o motivo do cancelamento (mínimo 3 caracteres).' });
+  }
+
+  // Fetch current order
+  const { data: order, error: oErr } = await supabase
+    .from('orders')
+    .select('id, order_code, status')
+    .eq('order_code', orderCode)
+    .maybeSingle();
+
+  if (oErr) {
+    console.error('[public/cancel-order] fetch error:', oErr);
+    return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
+  }
+  if (!order) {
+    return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
+  }
+
+  // Only allow cancelling if status is 'new'
+  if (order.status !== 'new') {
+    const statusLabels = {
+      confirmed: 'confirmado', rejected: 'recusado', cancelled: 'cancelado',
+      packing: 'em embalagem', shipped: 'enviado', done: 'concluído',
+    };
+    const label = statusLabels[order.status] || order.status;
+    return json(res, 400, {
+      error: 'cannot_cancel',
+      message: `Não é possível cancelar: o pedido já está ${label}.`,
+    });
+  }
+
+  // Update order
+  const { data: updated, error: updateErr } = await supabase
+    .from('orders')
+    .update({
+      status: 'cancelled',
+      cancel_reason: reason.trim(),
+      cancelled_at: new Date().toISOString(),
+    })
+    .eq('id', order.id)
+    .select('order_code, status')
+    .single();
+
+  if (updateErr) {
+    console.error('[public/cancel-order] update error:', updateErr);
+    return json(res, 500, { error: 'db_error', message: 'Falha ao cancelar pedido.' });
+  }
+
+  console.log('[public/cancel-order] cancelled %s, reason: %s', orderCode, reason.trim());
+
+  return json(res, 200, {
+    success: true,
+    orderCode: updated.order_code,
+    status: updated.status,
+    message: 'Pedido cancelado com sucesso.',
+  });
 }
