@@ -100,8 +100,24 @@ export default function AdminPage() {
             </button>
           </div>
 
+          {/* Env var warning */}
+          {!import.meta.env.VITE_ADMIN_API_KEY && (
+            <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+              <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
+                ⚠️ <strong>Chave de admin não configurada.</strong> Para que Pedidos, Produtos e Coleções funcionem, vá no <strong>Vercel → Settings → Environment Variables</strong> e adicione:
+              </p>
+              <ul className="font-sans text-xs text-amber-700 dark:text-amber-300 mt-2 list-disc pl-5 space-y-1">
+                <li><code>ADMIN_API_KEY</code> — chave secreta qualquer (ex: minha-chave-secreta-123)</li>
+                <li><code>VITE_ADMIN_API_KEY</code> — mesma chave (para o frontend enviar nos headers)</li>
+                <li><code>SUPABASE_URL</code> — URL do projeto Supabase</li>
+                <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — service role key do Supabase</li>
+              </ul>
+              <p className="font-sans text-xs text-amber-600 dark:text-amber-400 mt-2">Após adicionar, faça redeploy no Vercel.</p>
+            </div>
+          )}
+
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
             <div className="bg-surface rounded-xl p-4 shadow-soft text-center">
               <p className="font-sans text-2xl font-bold text-baby-text">{products.length}</p>
               <p className="font-sans text-xs text-baby-text/50">Total produtos</p>
@@ -114,31 +130,44 @@ export default function AdminPage() {
               <p className="font-sans text-2xl font-bold text-amber-500">{oosCount}</p>
               <p className="font-sans text-xs text-baby-text/50">Esgotados</p>
             </div>
-            <Link to="/admin/pedidos" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
-              <p className="font-sans text-2xl font-bold text-baby-accent">📦</p>
-              <p className="font-sans text-xs text-baby-text/50">Ver Pedidos</p>
+          </div>
+
+          {/* ── Gerenciamento ─────────────────────────── */}
+          <h2 className="font-serif text-lg text-baby-text mb-3">Gerenciamento</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <Link to="/admin/pedidos"
+              className="bg-surface rounded-2xl p-5 shadow-soft hover:ring-2 hover:ring-baby-accent transition-all group">
+              <p className="text-3xl mb-2">📦</p>
+              <p className="font-sans text-sm font-semibold text-baby-text group-hover:text-baby-accent transition-colors">Pedidos</p>
+              <p className="font-sans text-xs text-baby-text/50 mt-1">Ver, confirmar ou rejeitar pedidos dos clientes</p>
+            </Link>
+            <Link to="/admin/produtos"
+              className="bg-surface rounded-2xl p-5 shadow-soft hover:ring-2 hover:ring-baby-accent transition-all group">
+              <p className="text-3xl mb-2">🛍️</p>
+              <p className="font-sans text-sm font-semibold text-baby-text group-hover:text-baby-accent transition-colors">Produtos</p>
+              <p className="font-sans text-xs text-baby-text/50 mt-1">Criar, editar, publicar e excluir produtos</p>
+            </Link>
+            <Link to="/admin/colecoes-gerenciar"
+              className="bg-surface rounded-2xl p-5 shadow-soft hover:ring-2 hover:ring-baby-accent transition-all group">
+              <p className="text-3xl mb-2">📁</p>
+              <p className="font-sans text-sm font-semibold text-baby-text group-hover:text-baby-accent transition-colors">Coleções</p>
+              <p className="font-sans text-xs text-baby-text/50 mt-1">Criar e gerenciar coleções de produtos</p>
+            </Link>
+            <Link to="/admin/inicio"
+              className="bg-surface rounded-2xl p-5 shadow-soft hover:ring-2 hover:ring-baby-accent transition-all group">
+              <p className="text-3xl mb-2">🏠</p>
+              <p className="font-sans text-sm font-semibold text-baby-text group-hover:text-baby-accent transition-colors">Página Inicial</p>
+              <p className="font-sans text-xs text-baby-text/50 mt-1">Configurar seções da home (coleções e destaques)</p>
+            </Link>
+            <Link to="/debug"
+              className="bg-surface rounded-2xl p-5 shadow-soft hover:ring-2 hover:ring-baby-accent transition-all group">
+              <p className="text-3xl mb-2">🐛</p>
+              <p className="font-sans text-sm font-semibold text-baby-text group-hover:text-baby-accent transition-colors">Debug</p>
+              <p className="font-sans text-xs text-baby-text/50 mt-1">Ferramentas de diagnóstico e testes</p>
             </Link>
           </div>
 
-          {/* Admin shortcuts */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            <Link to="/admin/produtos" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
-              <p className="font-sans text-2xl font-bold text-baby-accent">🛍️</p>
-              <p className="font-sans text-xs text-baby-text/50">Produtos (DB)</p>
-            </Link>
-            <Link to="/admin/colecoes-gerenciar" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
-              <p className="font-sans text-2xl font-bold text-baby-accent">📁</p>
-              <p className="font-sans text-xs text-baby-text/50">Coleções</p>
-            </Link>
-            <Link to="/admin/inicio" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
-              <p className="font-sans text-2xl font-bold text-baby-accent">🏠</p>
-              <p className="font-sans text-xs text-baby-text/50">Página Inicial</p>
-            </Link>
-            <Link to="/debug" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
-              <p className="font-sans text-2xl font-bold text-baby-accent">🐛</p>
-              <p className="font-sans text-xs text-baby-text/50">Debug</p>
-            </Link>
-          </div>
+          <h2 className="font-serif text-lg text-baby-text mb-3">Controle de Estoque Rápido</h2>
 
           {/* Search */}
           <div className="relative mb-6">
