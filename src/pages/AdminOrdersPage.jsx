@@ -49,12 +49,12 @@ export default function AdminOrdersPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ resource: 'orders' });
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (search.trim()) params.set('q', search.trim());
       params.set('limit', '100');
 
-      const res = await fetch(`/api/admin/orders?${params}`, {
+      const res = await fetch(`/api/admin?${params}`, {
         headers: { 'x-admin-key': ADMIN_KEY },
       });
 

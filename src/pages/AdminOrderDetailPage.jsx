@@ -57,7 +57,7 @@ export default function AdminOrderDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/orders/${orderCode}`, {
+      const res = await fetch(`/api/admin?resource=orders&id=${orderCode}`, {
         headers: { 'x-admin-key': ADMIN_KEY },
       });
       const data = await res.json();
@@ -87,7 +87,7 @@ export default function AdminOrderDetailPage() {
 
   /* ── PATCH helper ───────────────────────────────── */
   const patchOrder = async (body) => {
-    const res = await fetch(`/api/admin/orders/${orderCode}`, {
+    const res = await fetch(`/api/admin?resource=orders&id=${orderCode}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',

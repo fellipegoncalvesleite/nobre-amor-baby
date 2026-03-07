@@ -296,34 +296,24 @@ export default function Header() {
                             Painel (Admin)
                           </Link>
                           <Link
-                            to="/admin/produtos"
+                            to="/admin/pedidos"
                             role="menuitem"
                             onClick={() => setIsAccountOpen(false)}
                             className={`flex items-center gap-3 px-4 py-2.5 font-sans text-xs text-baby-text/55
                                        hover:bg-baby-pink/30 hover:text-baby-text transition-colors pl-10
                                        ${focusRing}`}
                           >
-                            Produtos
+                            Pedidos
                           </Link>
                           <Link
-                            to="/admin/colecoes-gerenciar"
+                            to="/admin/catalogo"
                             role="menuitem"
                             onClick={() => setIsAccountOpen(false)}
                             className={`flex items-center gap-3 px-4 py-2.5 font-sans text-xs text-baby-text/55
                                        hover:bg-baby-pink/30 hover:text-baby-text transition-colors pl-10
                                        ${focusRing}`}
                           >
-                            Coleções
-                          </Link>
-                          <Link
-                            to="/admin/inicio"
-                            role="menuitem"
-                            onClick={() => setIsAccountOpen(false)}
-                            className={`flex items-center gap-3 px-4 py-2.5 font-sans text-xs text-baby-text/55
-                                       hover:bg-baby-pink/30 hover:text-baby-text transition-colors pl-10
-                                       ${focusRing}`}
-                          >
-                            Página Inicial
+                            Catálogo
                           </Link>
                           {authUser?.role === 'debug' && (
                             <Link

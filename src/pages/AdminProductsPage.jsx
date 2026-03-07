@@ -61,7 +61,7 @@ const emptyForm = {
   images: [],
 };
 
-export default function AdminProductsPage() {
+export default function AdminProductsPage({ embedded = false }) {
   const [products, setProducts] = useState([]);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -217,10 +217,14 @@ export default function AdminProductsPage() {
     }
   };
 
+  const Wrapper = embedded ? 'div' : 'section';
+  const wrapperClass = embedded ? '' : 'pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen';
+
   return (
-    <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+    <Wrapper className={wrapperClass}>
+      <div className={embedded ? '' : 'max-w-5xl mx-auto px-4 sm:px-6'}>
         {/* Breadcrumb */}
+        {!embedded && (
         <nav className="mb-6 font-sans text-sm text-baby-text/60">
           <ol className="flex items-center gap-1.5">
             <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
@@ -230,6 +234,7 @@ export default function AdminProductsPage() {
             <li className="text-baby-text font-medium">Produtos</li>
           </ol>
         </nav>
+        )}
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           {/* Header */}
@@ -559,6 +564,6 @@ export default function AdminProductsPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </section>
+    </Wrapper>
   );
 }

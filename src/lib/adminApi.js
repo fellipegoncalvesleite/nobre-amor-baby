@@ -1,6 +1,8 @@
 /**
  * Admin API service — centralized fetch calls for admin CRUD.
  *
+ * All admin calls go through /api/admin?resource=xxx&id=yyy
+ *
  * TODO: replace VITE_ADMIN_API_KEY with real session-based auth.
  */
 
@@ -22,18 +24,17 @@ async function request(url, options = {}) {
 /* ── Products ─────────────────────────────────────── */
 
 export async function listProducts(params = {}) {
-  const qs = new URLSearchParams();
+  const qs = new URLSearchParams({ resource: 'products' });
   if (params.search) qs.set('search', params.search);
   if (params.status) qs.set('status', params.status);
   if (params.collection_id) qs.set('collection_id', params.collection_id);
   if (params.limit) qs.set('limit', String(params.limit));
-  const url = `/api/admin/products${qs.toString() ? '?' + qs : ''}`;
-  const data = await request(url);
+  const data = await request(`/api/admin?${qs}`);
   return data.products;
 }
 
 export async function createProduct(product) {
-  const data = await request('/api/admin/products', {
+  const data = await request('/api/admin?resource=products', {
     method: 'POST',
     body: JSON.stringify(product),
   });
@@ -41,7 +42,7 @@ export async function createProduct(product) {
 }
 
 export async function updateProduct(id, updates) {
-  const data = await request(`/api/admin/products/${id}`, {
+  const data = await request(`/api/admin?resource=products&id=${id}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
   });
@@ -49,18 +50,18 @@ export async function updateProduct(id, updates) {
 }
 
 export async function deleteProduct(id) {
-  await request(`/api/admin/products/${id}`, { method: 'DELETE' });
+  await request(`/api/admin?resource=products&id=${id}`, { method: 'DELETE' });
 }
 
 /* ── Collections ──────────────────────────────────── */
 
 export async function listCollections() {
-  const data = await request('/api/admin/collections');
+  const data = await request('/api/admin?resource=collections');
   return data.collections;
 }
 
 export async function createCollection(collection) {
-  const data = await request('/api/admin/collections', {
+  const data = await request('/api/admin?resource=collections', {
     method: 'POST',
     body: JSON.stringify(collection),
   });
@@ -68,7 +69,7 @@ export async function createCollection(collection) {
 }
 
 export async function updateCollection(id, updates) {
-  const data = await request(`/api/admin/collections/${id}`, {
+  const data = await request(`/api/admin?resource=collections&id=${id}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
   });
@@ -76,7 +77,7 @@ export async function updateCollection(id, updates) {
 }
 
 export async function deleteCollection(id) {
-  await request(`/api/admin/collections/${id}`, { method: 'DELETE' });
+  await request(`/api/admin?resource=collections&id=${id}`, { method: 'DELETE' });
 }
 
 /* ── Upload ───────────────────────────────────────── */
@@ -96,7 +97,7 @@ export async function uploadImage(file, kind = 'product') {
     reader.readAsDataURL(file);
   });
 
-  const data = await request('/api/admin/upload', {
+  const data = await request('/api/admin?resource=upload', {
     method: 'POST',
     body: JSON.stringify({
       file: dataUrl,
@@ -110,12 +111,12 @@ export async function uploadImage(file, kind = 'product') {
 /* ── Homepage Settings ────────────────────────────── */
 
 export async function getHomeSettings() {
-  const data = await request('/api/admin/home');
+  const data = await request('/api/admin?resource=home');
   return data.settings;
 }
 
 export async function updateHomeSettings(updates) {
-  const data = await request('/api/admin/home', {
+  const data = await request('/api/admin?resource=home', {
     method: 'PATCH',
     body: JSON.stringify(updates),
   });
