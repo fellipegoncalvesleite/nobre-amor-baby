@@ -258,12 +258,39 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
     }
   }
 
-  const { data: updated, error: updateErr } = await supabase
+  // Try update — if it fails due to missing columns, retry with only core fields
+  let updated, updateErr;
+
+  ({ data: updated, error: updateErr } = await supabase
     .from('orders')
     .update(updates)
     .eq('order_code', orderCode)
     .select()
-    .single();
+    .single());
+
+  // Retry without optional timestamp/reason columns if they don't exist yet
+  if (updateErr) {
+    const errMsg = (updateErr.message || '').toLowerCase();
+    const isColumnError = errMsg.includes('column') || errMsg.includes('rejected_reason')
+      || errMsg.includes('confirmed_at') || errMsg.includes('rejected_at')
+      || errMsg.includes('cancel_reason') || errMsg.includes('cancelled_at');
+
+    if (isColumnError) {
+      console.warn('[admin/orders/patch] Column missing, retrying with core fields only:', updateErr.message);
+      const coreUpdates = {};
+      if (updates.status) coreUpdates.status = updates.status;
+      if (updates.manager_notes !== undefined) coreUpdates.manager_notes = updates.manager_notes;
+
+      if (Object.keys(coreUpdates).length > 0) {
+        ({ data: updated, error: updateErr } = await supabase
+          .from('orders')
+          .update(coreUpdates)
+          .eq('order_code', orderCode)
+          .select()
+          .single());
+      }
+    }
+  }
 
   if (updateErr) {
     console.error('[admin/orders/patch] error:', updateErr);

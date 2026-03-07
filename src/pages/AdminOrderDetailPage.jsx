@@ -98,7 +98,7 @@ export default function AdminOrderDetailPage() {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Erro ao atualizar pedido');
+    if (!res.ok) throw new Error(data.detail || data.message || 'Erro ao atualizar pedido');
     return data.order;
   };
 
