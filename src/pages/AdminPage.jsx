@@ -101,7 +101,7 @@ export default function AdminPage() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
             <div className="bg-surface rounded-xl p-4 shadow-soft text-center">
               <p className="font-sans text-2xl font-bold text-baby-text">{products.length}</p>
               <p className="font-sans text-xs text-baby-text/50">Total produtos</p>
@@ -110,10 +110,14 @@ export default function AdminPage() {
               <p className="font-sans text-2xl font-bold text-green-600">{products.length - oosCount}</p>
               <p className="font-sans text-xs text-baby-text/50">Em estoque</p>
             </div>
-            <div className="bg-surface rounded-xl p-4 shadow-soft text-center col-span-2 sm:col-span-1">
+            <div className="bg-surface rounded-xl p-4 shadow-soft text-center">
               <p className="font-sans text-2xl font-bold text-amber-500">{oosCount}</p>
               <p className="font-sans text-xs text-baby-text/50">Esgotados</p>
             </div>
+            <Link to="/admin/pedidos" className="bg-surface rounded-xl p-4 shadow-soft text-center hover:ring-2 hover:ring-baby-accent transition-all">
+              <p className="font-sans text-2xl font-bold text-baby-accent">📦</p>
+              <p className="font-sans text-xs text-baby-text/50">Ver Pedidos</p>
+            </Link>
           </div>
 
           {/* Search */}

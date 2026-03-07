@@ -59,6 +59,12 @@ export default function DebugPage() {
   const [apiTestResult, setApiTestResult] = useState(null);
   const [weightChecking, setWeightChecking] = useState(false);
 
+  /* ── Orders API debug state ─────────────────────── */
+  const [orderSeedLoading, setOrderSeedLoading] = useState(false);
+  const [orderSeedResult, setOrderSeedResult] = useState(null);
+  const [orderListLoading, setOrderListLoading] = useState(false);
+  const [orderListResult, setOrderListResult] = useState(null);
+
   // Current packing calculation (reactive)
   const currentPkg = useMemo(
     () => buildClothingPackage(cart, products),
@@ -1212,6 +1218,109 @@ export default function DebugPage() {
                 <summary className="cursor-pointer font-sans text-xs text-baby-text/50 hover:text-baby-text/70 transition-colors">Preview da mensagem</summary>
                 <pre className="mt-2 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-64 whitespace-pre-wrap">
                   {waPreview}
+                </pre>
+              </details>
+            )}
+          </div>
+
+          {/* ═══════════════════════════════════════════════
+              PEDIDOS (ORDERS API)
+              ═══════════════════════════════════════════════ */}
+          <div className="bg-surface rounded-2xl p-6 shadow-soft">
+            <h2 className="flex items-center gap-2 font-serif text-xl text-baby-text mb-4">
+              <span className="text-baby-accent">📦</span> Pedidos (Orders API)
+            </h2>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {/* Seed fake order */}
+              <button
+                type="button"
+                disabled={orderSeedLoading}
+                onClick={async () => {
+                  setOrderSeedLoading(true);
+                  setOrderSeedResult(null);
+                  try {
+                    const res = await fetch('/api/orders', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        customer: { name: 'Teste Debug', phone: '5500999999999', email: 'debug@test.com', message: 'Pedido de teste via DebugPage' },
+                        address: { cep: '35502825', street: 'Rua Teste', number: '123', complement: '', neighborhood: 'Centro', city: 'Divinópolis', uf: 'MG' },
+                        shipping: { feeCents: 1500, etaText: '3-5 dias úteis', provider: 'PAC' },
+                        payment: { method: 'pix', paidTotalCents: 11500, ref: 'pix_debug_seed' },
+                        items: [
+                          { productId: 'debug-1', productName: 'Body Floral P (teste)', size: 'P', qty: 1, unitPriceCents: 5000 },
+                          { productId: 'debug-2', productName: 'Sapatinho Rosa RN (teste)', size: 'RN', qty: 2, unitPriceCents: 2500 },
+                        ],
+                      }),
+                    });
+                    const data = await res.json();
+                    setOrderSeedResult({ ok: res.ok, status: res.status, data });
+                  } catch (err) {
+                    setOrderSeedResult({ ok: false, error: err.message });
+                  } finally {
+                    setOrderSeedLoading(false);
+                  }
+                }}
+                className={`${miniBtn} bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400`}
+              >
+                {orderSeedLoading ? 'Enviando…' : 'Seed pedido (fake)'}
+              </button>
+
+              {/* List orders */}
+              <button
+                type="button"
+                disabled={orderListLoading}
+                onClick={async () => {
+                  setOrderListLoading(true);
+                  setOrderListResult(null);
+                  try {
+                    const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
+                    const res = await fetch('/api/admin/orders?limit=5', {
+                      headers: { 'x-admin-key': adminKey },
+                    });
+                    const data = await res.json();
+                    setOrderListResult({ ok: res.ok, status: res.status, data });
+                  } catch (err) {
+                    setOrderListResult({ ok: false, error: err.message });
+                  } finally {
+                    setOrderListLoading(false);
+                  }
+                }}
+                className={`${miniBtn} bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400`}
+              >
+                {orderListLoading ? 'Buscando…' : 'Listar pedidos (admin)'}
+              </button>
+
+              {/* Link to Admin Orders */}
+              <Link
+                to="/admin/pedidos"
+                className={`${miniBtn} bg-baby-pink/60 text-baby-accent hover:bg-baby-pink`}
+              >
+                Abrir painel de pedidos →
+              </Link>
+            </div>
+
+            {/* Seed result */}
+            {orderSeedResult && (
+              <details open className="mb-3">
+                <summary className="cursor-pointer font-sans text-xs text-baby-text/50 hover:text-baby-text/70 transition-colors">
+                  Resultado seed ({orderSeedResult.ok ? '✅ OK' : '❌ Erro'})
+                </summary>
+                <pre className="mt-2 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-40 whitespace-pre-wrap">
+                  {JSON.stringify(orderSeedResult, null, 2)}
+                </pre>
+              </details>
+            )}
+
+            {/* List result */}
+            {orderListResult && (
+              <details open>
+                <summary className="cursor-pointer font-sans text-xs text-baby-text/50 hover:text-baby-text/70 transition-colors">
+                  Resultado listagem ({orderListResult.ok ? `✅ ${orderListResult.data?.orders?.length ?? 0} pedido(s)` : '❌ Erro'})
+                </summary>
+                <pre className="mt-2 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-64 whitespace-pre-wrap">
+                  {JSON.stringify(orderListResult, null, 2)}
                 </pre>
               </details>
             )}

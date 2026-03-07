@@ -127,11 +127,6 @@ export default function CheckoutPage() {
       decrementStock(item.id, item.qty);
     }
 
-    // Generate order ID
-    const orderId = generateOrderId();
-    saveOrderId(orderId);
-    setLastOrderId(orderId);
-
     // Finalize payment state
     const finalPayment = {
       ...payment,
@@ -141,6 +136,64 @@ export default function CheckoutPage() {
       paidShippingCents: payment.paidShippingCents,
     };
     setPayment(finalPayment);
+
+    /* ── Persist order to Supabase ────────────────── */
+    let orderId;
+    try {
+      const orderPayload = {
+        customer: {
+          name: form.name,
+          phone: form.phone || '',
+          email: form.email || '',
+          message: form.message || '',
+        },
+        address: {
+          cep: address.cep || '',
+          street: address.street || '',
+          number: address.number || '',
+          complement: address.complement || '',
+          neighborhood: address.neighborhood || '',
+          city: address.city || '',
+          uf: address.uf || '',
+        },
+        shipping: {
+          feeCents: shippingCents,
+          etaText: shipping.etaText || '',
+          provider: shipping.provider || '',
+        },
+        payment: {
+          method: finalPayment.method || 'pix',
+          paidTotalCents: finalPayment.paidTotalCents,
+          ref: finalPayment.card?.numberLast4
+            ? `cartao_final_${finalPayment.card.numberLast4}`
+            : `${finalPayment.method || 'pix'}_simulado`,
+        },
+        items: items.map((i) => ({
+          productId: String(i.id),
+          productName: i.product.name,
+          size: i.size || '',
+          qty: i.qty,
+          unitPriceCents: Math.round(i.product.price * 100),
+        })),
+      };
+      const apiRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload),
+      });
+      const apiData = await apiRes.json();
+      if (apiRes.ok && apiData.orderCode) {
+        orderId = apiData.orderCode;
+      } else {
+        console.warn('[checkout] API /api/orders error:', apiData);
+        orderId = generateOrderId(); // fallback
+      }
+    } catch (err) {
+      console.warn('[checkout] API /api/orders failed:', err);
+      orderId = generateOrderId(); // fallback — keep WA flow
+    }
+    saveOrderId(orderId);
+    setLastOrderId(orderId);
 
     // Build message
     const message = buildManagerPaidMessage({
