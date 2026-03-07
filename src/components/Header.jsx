@@ -506,7 +506,19 @@ export default function Header() {
                 </div>
 
                 {/* Utilities row */}
-                <div className="flex gap-2 pt-2">
+                <div className="flex gap-2 pt-2 flex-wrap">
+                  <Link
+                    to="/meus-pedidos"
+                    onClick={closeMobile}
+                    className="flex items-center gap-2 min-h-12 px-4 py-2 rounded-xl
+                               text-baby-text/80 hover:text-baby-text
+                               hover:bg-baby-pink/30 active:bg-baby-pink/50
+                               transition-colors font-sans
+                               focus:outline-none focus:ring-2 focus:ring-baby-accent"
+                  >
+                    <FiPackage size={18} aria-hidden="true" />
+                    <span>Meus Pedidos</span>
+                  </Link>
                   <Link
                     to="/favoritos"
                     onClick={closeMobile}

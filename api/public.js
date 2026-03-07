@@ -42,8 +42,10 @@ export default async function handler(req, res) {
         return await handleProducts(req, res, supabase);
       case 'collections':
         return await handleCollections(req, res, supabase);
+      case 'order':
+        return await handleOrder(req, res, supabase);
       default:
-        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: home, products, collections.' });
+        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: home, products, collections, order.' });
     }
   } catch (err) {
     console.error(`[public/${resource}] error:`, err);
@@ -225,4 +227,55 @@ async function handleCollections(req, res, supabase) {
 
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
   return json(res, 200, { collections: data || [] });
+}
+
+/* ══════════════════════════════════════════════════
+   ORDER — public order lookup by orderCode
+   ══════════════════════════════════════════════════ */
+async function handleOrder(req, res, supabase) {
+  const { orderCode } = req.query;
+
+  if (!orderCode || typeof orderCode !== 'string' || orderCode.length < 5) {
+    return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?orderCode= parameter.' });
+  }
+
+  // Fetch order (limited fields — no manager notes / internal data)
+  const { data: order, error: oErr } = await supabase
+    .from('orders')
+    .select(`
+      id, order_code, status, created_at,
+      customer_name,
+      address_cep, address_street, address_number, address_complement,
+      address_neighborhood, address_city, address_uf,
+      shipping_fee_cents, shipping_eta_text, shipping_provider,
+      subtotal_cents, total_cents,
+      payment_method,
+      rejected_reason, confirmed_at, rejected_at
+    `)
+    .eq('order_code', orderCode)
+    .maybeSingle();
+
+  if (oErr) {
+    console.error('[public/order] fetch error:', oErr);
+    return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
+  }
+  if (!order) {
+    return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
+  }
+
+  // Fetch items
+  const { data: items } = await supabase
+    .from('order_items')
+    .select('id, product_name, size, qty, unit_price_cents, line_total_cents')
+    .eq('order_id', order.id)
+    .order('id');
+
+  // Return sanitized order (no internal IDs exposed beyond order_code)
+  const result = { ...order };
+  delete result.id; // hide internal DB id
+  result.items = items || [];
+  result.items_count = (items || []).length;
+
+  res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=30');
+  return json(res, 200, { order: result });
 }

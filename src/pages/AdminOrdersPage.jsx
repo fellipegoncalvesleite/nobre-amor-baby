@@ -49,6 +49,12 @@ export default function AdminOrdersPage() {
     setLoading(true);
     setError(null);
     try {
+      if (!ADMIN_KEY) {
+        setError('VITE_ADMIN_API_KEY não está configurada. Configure no .env ou no painel do Vercel.');
+        setLoading(false);
+        return;
+      }
+
       const params = new URLSearchParams({ resource: 'orders' });
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (search.trim()) params.set('q', search.trim());
@@ -58,12 +64,28 @@ export default function AdminOrdersPage() {
         headers: { 'x-admin-key': ADMIN_KEY },
       });
 
+      if (res.status === 401) {
+        setError('Não autorizado (401). Verifique se VITE_ADMIN_API_KEY e ADMIN_API_KEY (servidor) têm o mesmo valor.');
+        setLoading(false);
+        return;
+      }
+      if (res.status === 404) {
+        setError('Endpoint não encontrado (404). Verifique se /api/admin está configurado no servidor.');
+        setLoading(false);
+        return;
+      }
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Erro ao buscar pedidos');
+      if (!res.ok) throw new Error(data.message || `Erro ${res.status} ao buscar pedidos`);
       setOrders(data.orders || []);
     } catch (err) {
       console.error('[AdminOrdersPage]', err);
-      setError(err.message);
+      const msg = err.message || 'Erro desconhecido';
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        setError('Falha de rede. Verifique sua conexão com a internet.');
+      } else {
+        setError(msg);
+      }
       toast.error('Falha ao carregar pedidos', {
         style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
       });
@@ -184,9 +206,16 @@ export default function AdminOrdersPage() {
 
           {/* Error banner */}
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6 flex items-center gap-3 font-sans text-sm text-red-700 dark:text-red-300">
-              <FiAlertTriangle size={18} />
-              {error}
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-6 font-sans text-sm text-red-700 dark:text-red-300">
+              <div className="flex items-start gap-3">
+                <FiAlertTriangle size={18} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium mb-1">{error}</p>
+                  <p className="text-xs text-red-600/70 dark:text-red-400/70">
+                    Dica: verifique se as variáveis de ambiente <strong>ADMIN_API_KEY</strong> (servidor) e <strong>VITE_ADMIN_API_KEY</strong> (frontend) estão configuradas com o mesmo valor.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 

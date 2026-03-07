@@ -1351,7 +1351,7 @@ export default function DebugPage() {
                   setOrderListResult(null);
                   try {
                     const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
-                    const res = await fetch('/api/admin/orders?limit=5', {
+                    const res = await fetch('/api/admin?resource=orders&limit=5', {
                       headers: { 'x-admin-key': adminKey },
                     });
                     const data = await res.json();
@@ -1393,7 +1393,7 @@ export default function DebugPage() {
                   setOrderResetResult(null);
                   try {
                     const adminKey = import.meta.env.VITE_ADMIN_API_KEY || '';
-                    const res = await fetch(`/api/admin/orders/${resetOrderCode.trim()}`, {
+                    const res = await fetch(`/api/admin?resource=orders&id=${encodeURIComponent(resetOrderCode.trim())}`, {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
                       body: JSON.stringify({ status: 'new' }),
