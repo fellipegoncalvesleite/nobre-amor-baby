@@ -176,6 +176,20 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
         });
       }
       updates.rejected_reason = body.rejected_reason.trim();
+      updates.rejected_at = new Date().toISOString();
+    }
+
+    if (body.status === 'confirmed') {
+      updates.confirmed_at = new Date().toISOString();
+    }
+
+    // Reset timestamps when going back to 'new'
+    if (body.status === 'new') {
+      updates.rejected_reason = null;
+      updates.rejected_at = null;
+      updates.confirmed_at = null;
+      updates.cancel_reason = null;
+      updates.cancelled_at = null;
     }
   }
 
@@ -207,7 +221,7 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
     if (newStatus === 'confirmed' && oldStatus !== 'confirmed') {
       const { data: items } = await supabase
         .from('order_items')
-        .select('product_id, quantity')
+        .select('product_id, qty')
         .eq('order_id', currentOrder.id);
 
       if (items?.length) {
@@ -215,7 +229,7 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
           if (item.product_id) {
             const { error: stockErr } = await supabase.rpc('decrement_stock', {
               p_product_id: item.product_id,
-              p_qty: item.quantity,
+              p_qty: item.qty,
             });
             if (stockErr) console.error('[stock] decrement error:', stockErr);
           }
@@ -227,7 +241,7 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
     if (oldStatus === 'confirmed' && newStatus !== 'confirmed') {
       const { data: items } = await supabase
         .from('order_items')
-        .select('product_id, quantity')
+        .select('product_id, qty')
         .eq('order_id', currentOrder.id);
 
       if (items?.length) {
@@ -235,7 +249,7 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
           if (item.product_id) {
             const { error: stockErr } = await supabase.rpc('increment_stock', {
               p_product_id: item.product_id,
-              p_qty: item.quantity,
+              p_qty: item.qty,
             });
             if (stockErr) console.error('[stock] increment error:', stockErr);
           }
@@ -253,7 +267,11 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
 
   if (updateErr) {
     console.error('[admin/orders/patch] error:', updateErr);
-    return json(res, 500, { error: 'db_error', message: 'Falha ao atualizar pedido.' });
+    return json(res, 500, {
+      error: 'db_error',
+      message: 'Falha ao atualizar pedido.',
+      detail: updateErr.message || String(updateErr),
+    });
   }
 
   // Fetch items for the response

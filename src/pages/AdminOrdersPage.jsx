@@ -1,19 +1,26 @@
 /**
- * AdminOrdersPage — list orders from the database.
+ * AdminOrdersPage — list orders from the database with tab-based workflow.
+ *
+ * Tabs:
+ *   Pendentes    — status: new
+ *   Confirmados  — status: confirmed, packing
+ *   Finalizados  — status: shipped, done
+ *   Cancelados   — status: cancelled, rejected
  *
  * Route: /admin/pedidos  (ProtectedRoute role="manager")
- *
- * MVP: uses VITE_ADMIN_API_KEY in the header.
- * TODO: replace with real session-based auth before going public.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiPackage, FiSearch, FiRefreshCw, FiChevronRight, FiAlertTriangle } from 'react-icons/fi';
+import {
+  FiPackage, FiSearch, FiRefreshCw, FiChevronRight, FiAlertTriangle,
+  FiCheckCircle, FiClock, FiTruck, FiXCircle,
+} from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { formatPrice, focusRing, btnSecondary } from '../lib/ui';
 
+/* ── Status labels & colors ──────────────────────── */
 const STATUS_LABELS = {
   new: 'Novo',
   confirmed: 'Confirmado',
@@ -21,7 +28,7 @@ const STATUS_LABELS = {
   cancelled: 'Cancelado',
   packing: 'Embalando',
   shipped: 'Enviado',
-  done: 'Concluído',
+  done: 'Entregue',
 };
 
 const STATUS_COLORS = {
@@ -34,17 +41,25 @@ const STATUS_COLORS = {
   done: 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-300',
 };
 
-/* ── helper: VITE_ADMIN_API_KEY (MVP — replace with real auth) ── */
+/* ── Tab definitions ─────────────────────────────── */
+const TABS = [
+  { key: 'pending',    label: 'Pendentes',    icon: FiClock,       statuses: ['new'] },
+  { key: 'confirmed',  label: 'Confirmados',  icon: FiCheckCircle, statuses: ['confirmed', 'packing'] },
+  { key: 'done',       label: 'Finalizados',  icon: FiTruck,       statuses: ['shipped', 'done'] },
+  { key: 'cancelled',  label: 'Cancelados',   icon: FiXCircle,     statuses: ['cancelled', 'rejected'] },
+];
+
 const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || '';
+const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
 export default function AdminOrdersPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [orders, setOrders] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState('pending');
   const [search, setSearch] = useState('');
 
   const fetchOrders = useCallback(async () => {
@@ -57,48 +72,78 @@ export default function AdminOrdersPage() {
         return;
       }
 
-      const params = new URLSearchParams({ resource: 'orders' });
-      if (statusFilter !== 'all') params.set('status', statusFilter);
+      const params = new URLSearchParams({ resource: 'orders', limit: '200' });
       if (search.trim()) params.set('q', search.trim());
-      params.set('limit', '100');
 
       const res = await fetch(`/api/admin?${params}`, {
         headers: { 'x-admin-key': ADMIN_KEY },
       });
 
       if (res.status === 401) {
-        setError('Não autorizado (401). Verifique se VITE_ADMIN_API_KEY e ADMIN_API_KEY (servidor) têm o mesmo valor.');
+        setError('Não autorizado (401). Verifique VITE_ADMIN_API_KEY e ADMIN_API_KEY.');
         setLoading(false);
         return;
       }
       if (res.status === 404) {
-        setError('Endpoint não encontrado (404). Verifique se /api/admin está configurado no servidor.');
+        setError('Endpoint não encontrado (404). Verifique /api/admin.');
         setLoading(false);
         return;
       }
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || `Erro ${res.status} ao buscar pedidos`);
-      setOrders(data.orders || []);
+      if (!res.ok) throw new Error(data.message || `Erro ${res.status}`);
+      setAllOrders(data.orders || []);
     } catch (err) {
       console.error('[AdminOrdersPage]', err);
       const msg = err.message || 'Erro desconhecido';
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-        setError('Falha de rede. Verifique sua conexão com a internet.');
+        setError('Falha de rede. Verifique sua conexão.');
       } else {
         setError(msg);
       }
-      toast.error('Falha ao carregar pedidos', {
-        style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' },
-      });
+      toast.error('Falha ao carregar pedidos', { style: toastStyle });
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, search]);
+  }, [search]);
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  /* ── Mark order as delivered (done) ────────────── */
+  const handleMarkDone = async (e, orderCode) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/admin?resource=orders&id=${encodeURIComponent(orderCode)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': ADMIN_KEY },
+        body: JSON.stringify({ status: 'done' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.message || 'Erro ao finalizar');
+      toast.success(`${orderCode} marcado como entregue`, { style: toastStyle });
+      setAllOrders((prev) =>
+        prev.map((o) => (o.order_code === orderCode ? { ...o, status: 'done' } : o))
+      );
+    } catch (err) {
+      toast.error(err.message, { style: toastStyle });
+    }
+  };
+
+  /* ── Filter orders by active tab ───────────────── */
+  const currentTabDef = TABS.find((t) => t.key === activeTab) || TABS[0];
+  const filteredOrders = useMemo(
+    () => allOrders.filter((o) => currentTabDef.statuses.includes(o.status)),
+    [allOrders, currentTabDef],
+  );
+
+  /* ── Tab counts ────────────────────────────────── */
+  const tabCounts = useMemo(() => {
+    const counts = {};
+    for (const tab of TABS) {
+      counts[tab.key] = allOrders.filter((o) => tab.statuses.includes(o.status)).length;
+    }
+    return counts;
+  }, [allOrders]);
 
   const formatDate = (iso) => {
     if (!iso) return '—';
@@ -113,13 +158,9 @@ export default function AdminOrdersPage() {
         {/* Breadcrumb */}
         <nav className="mb-6 font-sans text-sm text-baby-text/60" aria-label="Navegação de caminho">
           <ol className="flex items-center gap-1.5">
-            <li>
-              <Link to="/" className="hover:text-baby-accent transition-colors">Início</Link>
-            </li>
+            <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
             <li aria-hidden="true">/</li>
-            <li>
-              <Link to="/admin" className="hover:text-baby-accent transition-colors">Painel</Link>
-            </li>
+            <li><Link to="/admin" className="hover:text-baby-accent transition-colors">Painel</Link></li>
             <li aria-hidden="true">/</li>
             <li className="text-baby-text font-medium">Pedidos</li>
           </ol>
@@ -136,25 +177,23 @@ export default function AdminOrdersPage() {
               <div className="flex items-center gap-2">
                 <FiAlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0" size={18} />
                 <p className="font-sans text-sm text-amber-800 dark:text-amber-200">
-                  <strong>VITE_ADMIN_API_KEY</strong> não está configurada. Vá no painel do Vercel → Settings → Environment Variables e adicione <strong>ADMIN_API_KEY</strong> (para o servidor) e <strong>VITE_ADMIN_API_KEY</strong> (para o frontend) com o mesmo valor.
+                  <strong>VITE_ADMIN_API_KEY</strong> não está configurada.
                 </p>
               </div>
             </div>
           )}
 
           {/* Header */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-baby-pink/40 rounded-full flex items-center justify-center">
                 <FiPackage className="text-baby-accent" size={22} />
               </div>
               <div>
-                <h1 className="font-serif text-2xl sm:text-3xl text-baby-text">
-                  Pedidos
-                </h1>
+                <h1 className="font-serif text-2xl sm:text-3xl text-baby-text">Pedidos</h1>
                 {user && (
                   <p className="font-sans text-sm text-baby-accent">
-                    {orders.length} pedido{orders.length !== 1 ? 's' : ''}
+                    {allOrders.length} pedido{allOrders.length !== 1 ? 's' : ''} no total
                   </p>
                 )}
               </div>
@@ -173,25 +212,43 @@ export default function AdminOrdersPage() {
             </button>
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            {/* Status filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className={`pl-4 pr-8 py-3 rounded-xl border border-baby-text/15 bg-surface
-                         font-sans text-sm text-baby-text appearance-none
-                         focus:outline-none focus:ring-2 focus:ring-baby-accent focus:border-transparent
-                         transition-shadow ${focusRing}`}
-            >
-              <option value="all">Todos os status</option>
-              {Object.entries(STATUS_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
+          {/* ═══ TABS ════════════════════════════════ */}
+          <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
+            {TABS.map((tab) => {
+              const TabIcon = tab.icon;
+              const isActive = activeTab === tab.key;
+              const count = tabCounts[tab.key] || 0;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-sans text-sm font-medium
+                             transition-all whitespace-nowrap border-2
+                             ${isActive
+                               ? 'border-baby-accent bg-baby-accent/10 text-baby-accent shadow-sm'
+                               : 'border-transparent bg-surface text-baby-text/50 hover:text-baby-text hover:bg-baby-pink/20'
+                             } ${focusRing}`}
+                >
+                  <TabIcon size={15} />
+                  {tab.label}
+                  {count > 0 && (
+                    <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold
+                      ${isActive
+                        ? 'bg-baby-accent text-white'
+                        : 'bg-baby-text/10 text-baby-text/50'
+                      }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
-            {/* Search */}
-            <div className="relative flex-1">
+          {/* Search */}
+          <div className="mb-6">
+            <div className="relative">
               <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-baby-text/40" size={18} />
               <input
                 type="text"
@@ -214,7 +271,7 @@ export default function AdminOrdersPage() {
                 <div>
                   <p className="font-medium mb-1">{error}</p>
                   <p className="text-xs text-red-600/70 dark:text-red-400/70">
-                    Dica: verifique se as variáveis de ambiente <strong>ADMIN_API_KEY</strong> (servidor) e <strong>VITE_ADMIN_API_KEY</strong> (frontend) estão configuradas com o mesmo valor.
+                    Verifique se <strong>ADMIN_API_KEY</strong> e <strong>VITE_ADMIN_API_KEY</strong> estão iguais.
                   </p>
                 </div>
               </div>
@@ -242,27 +299,29 @@ export default function AdminOrdersPage() {
                     <th className="font-sans text-xs font-semibold text-baby-text/50 uppercase tracking-wider px-4 py-3 text-right hidden sm:table-cell">
                       Total
                     </th>
-                    <th className="font-sans text-xs font-semibold text-baby-text/50 uppercase tracking-wider px-4 py-3 text-center w-12">
-                      <span className="sr-only">Ver</span>
+                    <th className="font-sans text-xs font-semibold text-baby-text/50 uppercase tracking-wider px-4 py-3 text-center w-32">
+                      Ações
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-baby-pink/50">
-                  {loading && orders.length === 0 ? (
+                  {loading && allOrders.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="text-center py-12">
                         <FiRefreshCw size={24} className="mx-auto animate-spin text-baby-accent mb-2" />
                         <p className="font-sans text-sm text-baby-text/50">Carregando pedidos…</p>
                       </td>
                     </tr>
-                  ) : orders.length === 0 ? (
+                  ) : filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="text-center py-12">
-                        <p className="font-sans text-sm text-baby-text/40">Nenhum pedido encontrado.</p>
+                        <p className="font-sans text-sm text-baby-text/40">
+                          Nenhum pedido {currentTabDef.label.toLowerCase()} encontrado.
+                        </p>
                       </td>
                     </tr>
                   ) : (
-                    orders.map((o) => (
+                    filteredOrders.map((o) => (
                       <tr
                         key={o.order_code}
                         onClick={() => navigate(`/admin/pedidos/${o.order_code}`)}
@@ -275,13 +334,12 @@ export default function AdminOrdersPage() {
                           <span className="font-sans text-sm font-medium text-baby-text">
                             {o.order_code}
                           </span>
-                          {/* Show customer on mobile */}
                           <p className="font-sans text-xs text-baby-text/40 sm:hidden mt-0.5">
                             {o.customer_name || '—'}
                           </p>
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
-                          <span className="font-sans text-sm text-baby-text/70 truncate max-w-[160px] block">
+                          <span className="font-sans text-sm text-baby-text/70 truncate max-w-40 block">
                             {o.customer_name || '—'}
                           </span>
                         </td>
@@ -295,8 +353,32 @@ export default function AdminOrdersPage() {
                             {formatPrice(o.total_cents / 100)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <FiChevronRight size={16} className="text-baby-text/30" />
+                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Mark as delivered — only for confirmed/packing/shipped */}
+                            {['confirmed', 'packing', 'shipped'].includes(o.status) && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleMarkDone(e, o.order_code)}
+                                title="Marcar como entregue"
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-sans text-xs font-medium
+                                           transition-colors bg-green-100 text-green-700 hover:bg-green-200
+                                           dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 ${focusRing}`}
+                              >
+                                <FiCheckCircle size={13} />
+                                <span className="hidden sm:inline">Entregue</span>
+                              </button>
+                            )}
+                            {/* View detail */}
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/admin/pedidos/${o.order_code}`)}
+                              title="Ver detalhes"
+                              className={`p-1.5 rounded-lg text-baby-text/30 hover:text-baby-accent hover:bg-baby-pink/20 transition-colors ${focusRing}`}
+                            >
+                              <FiChevronRight size={16} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
