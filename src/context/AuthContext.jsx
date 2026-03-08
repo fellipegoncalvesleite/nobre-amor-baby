@@ -58,12 +58,13 @@ export function AuthProvider({ children }) {
   }, [fetchProfile]);
 
   /* ── Auth actions ──────────────────────────────── */
-  const signUp = useCallback(async (email, password, name) => {
+  const signUp = useCallback(async (email, password, firstName, lastName) => {
+    const fullName = lastName ? `${firstName} ${lastName}` : firstName;
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: name },
+        data: { full_name: fullName, first_name: firstName, last_name: lastName || '' },
         emailRedirectTo: window.location.origin + '/entrar',
       },
     });

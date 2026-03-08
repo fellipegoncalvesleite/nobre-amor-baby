@@ -39,6 +39,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -72,14 +73,14 @@ export default function LoginPage() {
   /* ── Signup ────────────────────────────────────── */
   const handleSignup = async (e) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !password) return;
+    if (!name.trim() || !lastName.trim() || !email.trim() || !password) return;
     if (password.length < 6) {
       toast.error('A senha deve ter pelo menos 6 caracteres.', { style: toastStyle });
       return;
     }
     setBusy(true);
     try {
-      await signUp(email.trim(), password, name.trim());
+      await signUp(email.trim(), password, name.trim(), lastName.trim());
       setSignupDone(true);
       toast.success('Conta criada! Verifique seu e-mail para confirmar.', { style: toastStyle, duration: 5000 });
     } catch (err) {
@@ -299,7 +300,23 @@ export default function LoginPage() {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="Seu nome"
-                        autoComplete="name"
+                        autoComplete="given-name"
+                        disabled={busy}
+                        className={`${inputCls} ${focusRing}`}
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="signup-lastname" className="block font-sans text-sm text-baby-text/70 mb-1.5">
+                        Sobrenome
+                      </label>
+                      <input
+                        id="signup-lastname"
+                        type="text"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        placeholder="Seu sobrenome"
+                        autoComplete="family-name"
                         disabled={busy}
                         className={`${inputCls} ${focusRing}`}
                       />
@@ -349,7 +366,7 @@ export default function LoginPage() {
 
                     <button
                       type="submit"
-                      disabled={busy || !name.trim() || !email.trim() || password.length < 6}
+                      disabled={busy || !name.trim() || !lastName.trim() || !email.trim() || password.length < 6}
                       className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full
                                  bg-baby-accent text-white font-sans text-sm font-medium
                                  hover:bg-baby-accent/90 transition-colors disabled:opacity-50 ${focusRing}`}
