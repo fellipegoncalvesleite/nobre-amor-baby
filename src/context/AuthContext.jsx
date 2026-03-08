@@ -60,7 +60,10 @@ export function AuthProvider({ children }) {
   const signInWithOtp = useCallback(async (email) => {
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true },
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: window.location.origin + '/entrar',
+      },
     });
     if (error) throw error;
   }, []);
