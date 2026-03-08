@@ -1,5 +1,5 @@
 /**
- * AuthContext — Supabase Auth (Email OTP, Google, Apple).
+ * AuthContext — Supabase Auth (Email+Password, Google OAuth).
  *
  * Roles (from profiles table):
  *   "customer"  — default
@@ -8,7 +8,8 @@
  *
  * Exposes:
  *   session, user, profile, isAuthed, loading
- *   hasRole(r), signInWithOtp, signInWithOAuth, signOut, accessToken
+ *   hasRole(r), signUp, signInWithPassword, signInWithOtp,
+ *   signInWithOAuth, resetPassword, updatePassword, signOut, accessToken
  */
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
@@ -57,6 +58,23 @@ export function AuthProvider({ children }) {
   }, [fetchProfile]);
 
   /* ── Auth actions ──────────────────────────────── */
+  const signUp = useCallback(async (email, password, name) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: name },
+        emailRedirectTo: window.location.origin + '/entrar',
+      },
+    });
+    if (error) throw error;
+  }, []);
+
+  const signInWithPassword = useCallback(async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  }, []);
+
   const signInWithOtp = useCallback(async (email) => {
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -130,6 +148,8 @@ export function AuthProvider({ children }) {
       isAuthed,
       loading,
       hasRole,
+      signUp,
+      signInWithPassword,
       signInWithOtp,
       signInWithOAuth,
       resetPassword,
@@ -138,7 +158,7 @@ export function AuthProvider({ children }) {
       accessToken,
       logout: signOut,
     }),
-    [session, authUser, profile, isAuthed, loading, hasRole, signInWithOtp, signInWithOAuth, resetPassword, updatePassword, signOut, accessToken],
+    [session, authUser, profile, isAuthed, loading, hasRole, signUp, signInWithPassword, signInWithOtp, signInWithOAuth, resetPassword, updatePassword, signOut, accessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
