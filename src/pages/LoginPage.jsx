@@ -179,6 +179,13 @@ export default function LoginPage() {
                 </button>
               </form>
 
+              {/* ─── Forgot password ─────────────────── */}
+              <p className="text-center mt-3">
+                <Link to="/redefinir-senha" className="font-sans text-xs text-baby-text/50 hover:text-baby-accent transition-colors">
+                  Esqueceu sua senha?
+                </Link>
+              </p>
+
               {/* ─── Divider ─────────────────────────── */}
               <div className="flex items-center gap-4 my-6">
                 <div className="flex-1 h-px bg-baby-text/10" />

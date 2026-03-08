@@ -78,6 +78,18 @@ export function AuthProvider({ children }) {
     if (error) throw error;
   }, []);
 
+  const resetPassword = useCallback(async (email) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/redefinir-senha',
+    });
+    if (error) throw error;
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -120,11 +132,13 @@ export function AuthProvider({ children }) {
       hasRole,
       signInWithOtp,
       signInWithOAuth,
+      resetPassword,
+      updatePassword,
       signOut,
       accessToken,
       logout: signOut,
     }),
-    [session, authUser, profile, isAuthed, loading, hasRole, signInWithOtp, signInWithOAuth, signOut, accessToken],
+    [session, authUser, profile, isAuthed, loading, hasRole, signInWithOtp, signInWithOAuth, resetPassword, updatePassword, signOut, accessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
