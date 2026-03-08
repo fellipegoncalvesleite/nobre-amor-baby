@@ -15,6 +15,7 @@ import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import LoginPage from './pages/LoginPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminOrdersPage from './pages/AdminOrdersPage';
 import AdminOrderDetailPage from './pages/AdminOrderDetailPage';
@@ -62,6 +63,7 @@ function App() {
           <Route path="/meus-pedidos" element={<MeusPedidosPage />} />
           <Route path="/meus-pedidos/:orderCode" element={<CustomerOrderDetailPage />} />
           <Route path="/entrar" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
           <Route path="/admin" element={<ProtectedRoute role="manager"><AdminDashboardPage /></ProtectedRoute>} />
           <Route path="/admin/pedidos" element={<ProtectedRoute role="manager"><AdminOrdersPage /></ProtectedRoute>} />

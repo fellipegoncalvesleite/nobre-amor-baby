@@ -4,7 +4,7 @@
  * Gated by ProtectedRoute with role="debug".
  * Provides quick stock manipulation, cart seeding, and inventory overview.
  */
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -35,6 +35,104 @@ const miniBtn = `px-2.5 py-1 rounded-full font-sans text-xs font-medium transiti
 
 const normalise = (s) =>
   s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/* ── Auth Debug sub-component ──────────────────────── */
+function AuthDebugSection({ user }) {
+  const [authEvents, setAuthEvents] = useState([]);
+  const [callbackDebug, setCallbackDebug] = useState(null);
+  const [returnPath, setReturnPath] = useState('');
+
+  useEffect(() => {
+    try { setAuthEvents(JSON.parse(sessionStorage.getItem('nobre_amor_auth_debug') || '[]')); } catch { /* ok */ }
+    try { setCallbackDebug(JSON.parse(sessionStorage.getItem('nobre_amor_callback_debug') || 'null')); } catch { /* ok */ }
+    try { setReturnPath(sessionStorage.getItem('nobre_amor_return_path') || '(empty)'); } catch { /* ok */ }
+  }, []);
+
+  const clearLogs = () => {
+    try { sessionStorage.removeItem('nobre_amor_auth_debug'); } catch { /* ok */ }
+    try { sessionStorage.removeItem('nobre_amor_callback_debug'); } catch { /* ok */ }
+    setAuthEvents([]);
+    setCallbackDebug(null);
+  };
+
+  return (
+    <div className="bg-surface rounded-2xl p-5 shadow-soft mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-serif text-lg text-baby-text flex items-center gap-2">
+          <FiTerminal size={18} className="text-blue-500" />
+          Auth Debug
+        </h2>
+        <button
+          type="button"
+          onClick={clearLogs}
+          className={`${miniBtn} bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400`}
+        >
+          Limpar logs
+        </button>
+      </div>
+
+      <div className="space-y-3 font-sans text-sm text-baby-text">
+        {/* Session info */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div className="bg-baby-cream/60 rounded-xl p-3">
+            <p className="font-bold">{user ? '✓ Authed' : '✗ Anon'}</p>
+            <p className="text-[11px] text-baby-text/50">Sessão</p>
+          </div>
+          <div className="bg-baby-cream/60 rounded-xl p-3">
+            <p className="font-bold truncate text-xs">{user?.email || '—'}</p>
+            <p className="text-[11px] text-baby-text/50">Email</p>
+          </div>
+          <div className="bg-baby-cream/60 rounded-xl p-3">
+            <p className="font-bold">{user?.role || '—'}</p>
+            <p className="text-[11px] text-baby-text/50">Role</p>
+          </div>
+          <div className="bg-baby-cream/60 rounded-xl p-3">
+            <p className="font-bold truncate text-xs">{returnPath}</p>
+            <p className="text-[11px] text-baby-text/50">Return Path</p>
+          </div>
+        </div>
+
+        {/* Supabase URL */}
+        <div className="bg-baby-cream/60 rounded-xl p-3 text-xs">
+          <span className="font-medium">Supabase URL:</span>{' '}
+          <code className="text-purple-600 dark:text-purple-400 break-all">{import.meta.env.VITE_SUPABASE_URL || '(not set)'}</code>
+        </div>
+
+        {/* Recent auth events */}
+        <details className="bg-baby-cream/60 rounded-xl p-3">
+          <summary className="cursor-pointer font-medium text-xs">Auth Events ({authEvents.length})</summary>
+          {authEvents.length === 0 ? (
+            <p className="text-xs text-baby-text/50 mt-2">Nenhum evento registrado.</p>
+          ) : (
+            <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+              {[...authEvents].reverse().map((e, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    e.event === 'SIGNED_IN' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    e.event === 'SIGNED_OUT' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                    'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                  }`}>{e.event}</span>
+                  <span className="text-baby-text/40">{new Date(e.timestamp).toLocaleTimeString()}</span>
+                  {e.userId && <span className="text-baby-text/30 truncate">{e.userId.slice(0, 8)}…</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </details>
+
+        {/* Last callback debug */}
+        {callbackDebug && (
+          <details className="bg-baby-cream/60 rounded-xl p-3">
+            <summary className="cursor-pointer font-medium text-xs">Last Callback</summary>
+            <pre className="mt-2 text-[11px] text-baby-text/70 overflow-x-auto whitespace-pre-wrap">
+              {JSON.stringify(callbackDebug, null, 2)}
+            </pre>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function DebugPage() {
   const navigate = useNavigate();
@@ -195,6 +293,9 @@ export default function DebugPage() {
               Reset catálogo
             </button>
           </div>
+
+          {/* ════ Auth Debug ════ */}
+          <AuthDebugSection user={user} />
 
           {/* Catalog info */}
           <div className="bg-surface rounded-2xl p-5 shadow-soft mb-8">

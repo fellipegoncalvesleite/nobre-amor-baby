@@ -15,6 +15,7 @@ import { FiMail, FiLoader, FiUser, FiLock, FiEye, FiEyeOff } from 'react-icons/f
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { focusRing } from '../lib/ui';
+import { saveReturnPath, clearReturnPath } from '../lib/authReturn';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -35,6 +36,13 @@ export default function LoginPage() {
   const location = useLocation();
   const from = location.state?.from ?? '/';
 
+  // Persist return path for email/OAuth flows that leave the site
+  useEffect(() => {
+    if (location.state?.from) {
+      saveReturnPath(location.state.from);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [tab, setTab] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,10 +52,11 @@ export default function LoginPage() {
   const [signupDone, setSignupDone] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // If user just authenticated, redirect
+  // If user just authenticated (password login), redirect immediately
   useEffect(() => {
     if (isAuthed && !authLoading) {
       toast.success('Login realizado!', { style: toastStyle });
+      clearReturnPath();
       navigate(from, { replace: true });
     }
   }, [isAuthed, authLoading, navigate, from]);
