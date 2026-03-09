@@ -39,11 +39,13 @@ const normalise = (s) =>
 /* ── Auth Debug sub-component ──────────────────────── */
 function AuthDebugSection({ user }) {
   const [authEvents, setAuthEvents] = useState([]);
+  const [authRequests, setAuthRequests] = useState([]);
   const [callbackDebug, setCallbackDebug] = useState(null);
   const [returnPath, setReturnPath] = useState('');
 
   useEffect(() => {
     try { setAuthEvents(JSON.parse(sessionStorage.getItem('nobre_amor_auth_debug') || '[]')); } catch { /* ok */ }
+    try { setAuthRequests(JSON.parse(sessionStorage.getItem('nobre_amor_auth_requests') || '[]')); } catch { /* ok */ }
     try { setCallbackDebug(JSON.parse(sessionStorage.getItem('nobre_amor_callback_debug') || 'null')); } catch { /* ok */ }
     try { setReturnPath(sessionStorage.getItem('nobre_amor_return_path') || '(empty)'); } catch { /* ok */ }
   }, []);
@@ -51,7 +53,9 @@ function AuthDebugSection({ user }) {
   const clearLogs = () => {
     try { sessionStorage.removeItem('nobre_amor_auth_debug'); } catch { /* ok */ }
     try { sessionStorage.removeItem('nobre_amor_callback_debug'); } catch { /* ok */ }
+    try { sessionStorage.removeItem('nobre_amor_auth_requests'); } catch { /* ok */ }
     setAuthEvents([]);
+    setAuthRequests([]);
     setCallbackDebug(null);
   };
 
@@ -129,6 +133,33 @@ function AuthDebugSection({ user }) {
             </pre>
           </details>
         )}
+
+        {/* Auth request tracing */}
+        <details className="bg-baby-cream/60 rounded-xl p-3" open={authRequests.length > 0}>
+          <summary className="cursor-pointer font-medium text-xs">
+            Auth Requests ({authRequests.length})
+          </summary>
+          {authRequests.length === 0 ? (
+            <p className="text-xs text-baby-text/50 mt-2">Nenhuma requisição registrada.</p>
+          ) : (
+            <div className="mt-2 space-y-1 max-h-64 overflow-y-auto">
+              {[...authRequests].reverse().map((r, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 text-xs border-b border-baby-text/10 pb-1">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    r.type === 'req' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                    r.type === 'ok'  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  }`}>{r.type === 'req' ? '→' : r.type === 'ok' ? '✓' : '✗'}</span>
+                  <span className="font-mono text-baby-text/80">{r.method}</span>
+                  {r.detail && <span className="text-baby-text/40 truncate max-w-[120px]">{r.detail}</span>}
+                  {r.status && <span className="text-red-500 font-bold">HTTP {r.status}</span>}
+                  {r.message && <span className="text-red-600 dark:text-red-400 truncate max-w-[200px]">{r.message}</span>}
+                  <span className="text-baby-text/30 ml-auto">{new Date(r.ts).toLocaleTimeString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </details>
       </div>
     </div>
   );

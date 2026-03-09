@@ -19,6 +19,82 @@ import { saveReturnPath, clearReturnPath } from '../lib/authReturn';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
+/* ── Auth error → Portuguese message ─────────────── */
+function mapAuthError(err, context = 'login') {
+  const m = err.message || '';
+  const status = err.status || 0;
+
+  // Rate limit — HTTP 429 or any rate/limit wording
+  if (status === 429 || /rate.limit|too many|over_request|request.*limit/i.test(m)
+      || /security purposes.*after/i.test(m)) {
+    return 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+  }
+
+  // Wrong credentials
+  if (/invalid.login/i.test(m)) return 'E-mail ou senha incorretos.';
+
+  // Email not confirmed
+  if (/email.*not.*confirm/i.test(m)) {
+    return 'Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.';
+  }
+
+  // User already exists (signup)
+  if (/already.*registered|already.*exists/i.test(m)) {
+    return 'Este e-mail já está cadastrado. Tente entrar.';
+  }
+
+  // Email sending error
+  if (/sending.*confirmation|sending.*email|email.*send/i.test(m)) {
+    return 'Erro ao enviar e-mail de confirmação. Tente novamente em alguns minutos.';
+  }
+
+  // Weak password
+  if (/password.*weak|password.*short|password.*length/i.test(m)) {
+    return 'A senha é muito fraca. Use pelo menos 6 caracteres.';
+  }
+
+  // Network / unknown
+  if (/network|fetch|timeout|aborted/i.test(m)) {
+    return 'Erro de conexão. Verifique sua internet e tente novamente.';
+  }
+
+  // Fallback per context
+  if (context === 'signup') return m || 'Falha ao criar conta.';
+  if (context === 'oauth') return m || 'Falha ao iniciar login.';
+  return m || 'Falha ao entrar.';
+}
+
+/* ── Debug: log auth requests to sessionStorage ──── */
+const AUTH_LOG_KEY = 'nobre_amor_auth_requests';
+
+function logAuthRequest(method, detail) {
+  try {
+    const logs = JSON.parse(sessionStorage.getItem(AUTH_LOG_KEY) || '[]');
+    logs.push({ method, detail, ts: new Date().toISOString(), type: 'req' });
+    if (logs.length > 40) logs.splice(0, logs.length - 40);
+    sessionStorage.setItem(AUTH_LOG_KEY, JSON.stringify(logs));
+  } catch { /* ok */ }
+  if (import.meta.env.DEV) console.log(`[Auth] → ${method}`, detail);
+}
+
+function logAuthResult(method, err) {
+  try {
+    const logs = JSON.parse(sessionStorage.getItem(AUTH_LOG_KEY) || '[]');
+    logs.push({
+      method,
+      type: err ? 'err' : 'ok',
+      ts: new Date().toISOString(),
+      ...(err && { message: err.message, status: err.status, name: err.name }),
+    });
+    if (logs.length > 40) logs.splice(0, logs.length - 40);
+    sessionStorage.setItem(AUTH_LOG_KEY, JSON.stringify(logs));
+  } catch { /* ok */ }
+  if (import.meta.env.DEV) {
+    if (err) console.warn(`[Auth] ✗ ${method}`, { message: err.message, status: err.status, name: err.name });
+    else console.log(`[Auth] ✓ ${method}`);
+  }
+}
+
 const inputCls = `w-full px-4 py-3 rounded-xl border border-baby-text/30 bg-white dark:bg-gray-900
                   font-sans text-baby-text placeholder:text-baby-text/40
                   transition-colors hover:border-baby-accent/60
@@ -69,12 +145,13 @@ export default function LoginPage() {
     if (!email.trim() || !password) return;
     setBusy(true);
     try {
+      logAuthRequest('signInWithPassword', email.trim());
       await signInWithPassword(email.trim(), password);
+      logAuthResult('signInWithPassword', null);
     } catch (err) {
+      logAuthResult('signInWithPassword', err);
       console.error('[LoginPage] login error:', err);
-      const msg = err.message?.includes('Invalid login')
-        ? 'E-mail ou senha incorretos.'
-        : (err.message || 'Falha ao entrar.');
+      const msg = mapAuthError(err, 'login');
       toast.error(msg, { style: toastStyle });
     } finally {
       setBusy(false);
@@ -95,19 +172,15 @@ export default function LoginPage() {
     }
     setBusy(true);
     try {
+      logAuthRequest('signUp', email.trim());
       await signUp(email.trim(), password, name.trim(), lastName.trim());
+      logAuthResult('signUp', null);
       setSignupDone(true);
       toast.success('Conta criada! Verifique seu e-mail para concluir o cadastro.', { style: toastStyle, duration: 5000 });
     } catch (err) {
+      logAuthResult('signUp', err);
       console.error('[LoginPage] signup error:', err);
-      let msg = err.message || 'Falha ao criar conta.';
-      if (err.message?.includes('already registered')) {
-        msg = 'Este e-mail já está cadastrado. Tente entrar.';
-      } else if (err.message?.includes('sending confirmation') || err.message?.includes('sending email')) {
-        msg = 'Erro ao enviar e-mail de confirmação. Tente novamente em alguns minutos.';
-      } else if (err.message?.includes('rate limit') || err.message?.includes('too many')) {
-        msg = 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
-      }
+      const msg = mapAuthError(err, 'signup');
       toast.error(msg, { style: toastStyle });
     } finally {
       setBusy(false);
@@ -118,10 +191,12 @@ export default function LoginPage() {
   const handleOAuth = async (provider) => {
     setBusy(true);
     try {
+      logAuthRequest('signInWithOAuth', provider);
       await signInWithOAuth(provider);
     } catch (err) {
+      logAuthResult('signInWithOAuth', err);
       console.error('[LoginPage] OAuth error:', err);
-      toast.error(err.message || 'Falha ao iniciar login.', { style: toastStyle });
+      toast.error(mapAuthError(err, 'oauth'), { style: toastStyle });
       setBusy(false);
     }
   };
