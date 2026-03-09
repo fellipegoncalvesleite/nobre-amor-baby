@@ -140,16 +140,9 @@ export default function LoginPage() {
       logAuthResult('signInWithPassword', null);
     } catch (err) {
       logAuthResult('signInWithPassword', err);
-      console.error('[LoginPage] login error — RAW:', JSON.stringify({
-        message: err.message, status: err.status, name: err.name,
-        code: err.code, __isAuthError: err.__isAuthError,
-      }));
+      console.error('[LoginPage] login error:', err);
       const msg = mapAuthError(err, 'login');
       toast.error(msg, { style: toastStyle });
-      // Temporary: also show the raw Supabase message so we can diagnose
-      if (err.message && err.message !== msg) {
-        toast(`[DEBUG] Raw: ${err.message}`, { style: { ...toastStyle, fontSize: '11px' }, duration: 8000 });
-      }
     } finally {
       setBusy(false);
     }
@@ -176,16 +169,9 @@ export default function LoginPage() {
       toast.success('Conta criada! Verifique seu e-mail para concluir o cadastro.', { style: toastStyle, duration: 5000 });
     } catch (err) {
       logAuthResult('signUp', err);
-      console.error('[LoginPage] signup error — RAW:', JSON.stringify({
-        message: err.message, status: err.status, name: err.name,
-        code: err.code, __isAuthError: err.__isAuthError,
-      }));
+      console.error('[LoginPage] signup error:', err);
       const msg = mapAuthError(err, 'signup');
       toast.error(msg, { style: toastStyle });
-      // Temporary: also show the raw Supabase message so we can diagnose
-      if (err.message && err.message !== msg) {
-        toast(`[DEBUG] Raw: ${err.message}`, { style: { ...toastStyle, fontSize: '11px' }, duration: 8000 });
-      }
     } finally {
       setBusy(false);
     }
