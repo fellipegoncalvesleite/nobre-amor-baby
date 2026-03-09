@@ -39,20 +39,22 @@ export function AuthProvider({ children }) {
 
   /* ── Listen to Supabase auth state ─────────────── */
   useEffect(() => {
+    // 1. Restore any existing session from storage
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       if (s?.user) fetchProfile(s.user.id);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    // 2. Listen for auth state changes (login, logout, token refresh, email confirm)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       // Debug: log auth events to sessionStorage + console
       if (import.meta.env.DEV) {
-        console.log(`[Auth] Event: ${_event}`, { hasSession: !!s, userId: s?.user?.id });
+        console.log(`[Auth] Event: ${event}`, { hasSession: !!s, userId: s?.user?.id });
       }
       try {
         const logs = JSON.parse(sessionStorage.getItem('nobre_amor_auth_debug') || '[]');
-        logs.push({ event: _event, timestamp: new Date().toISOString(), hasSession: !!s, userId: s?.user?.id ?? null });
+        logs.push({ event, timestamp: new Date().toISOString(), hasSession: !!s, userId: s?.user?.id ?? null });
         if (logs.length > 20) logs.splice(0, logs.length - 20);
         sessionStorage.setItem('nobre_amor_auth_debug', JSON.stringify(logs));
       } catch { /* ok */ }
@@ -63,6 +65,8 @@ export function AuthProvider({ children }) {
       } else {
         setProfile(null);
       }
+      // Always ensure loading is false after any auth event
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
