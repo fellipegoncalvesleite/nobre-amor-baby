@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 import Header from './components/Header';
@@ -26,6 +27,24 @@ import CustomerOrderDetailPage from './pages/CustomerOrderDetailPage';
 import DebugPage from './pages/DebugPage';
 import StaticPage from './pages/StaticPage';
 
+function AuthRedirectBridge() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const hasAuthParams = searchParams.has('token_hash') || searchParams.has('code') || searchParams.has('error');
+
+    if (!hasAuthParams) return;
+    if (location.pathname === '/auth/callback' || location.pathname === '/redefinir-senha') return;
+
+    const targetPath = searchParams.get('type') === 'recovery' ? '/redefinir-senha' : '/auth/callback';
+    navigate({ pathname: targetPath, search: location.search }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  return null;
+}
+
 function App() {
   return (
     <div className="min-h-screen flex flex-col">
@@ -39,6 +58,7 @@ function App() {
       </a>
 
       <ScrollToTop />
+      <AuthRedirectBridge />
       <Header />
 
       <main id="main-content" className="flex-1">
