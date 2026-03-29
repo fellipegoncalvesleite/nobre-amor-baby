@@ -3,7 +3,7 @@
  *
  * Usage:
  *   <Route path="/checkout" element={<ProtectedRoute><CheckoutPage /></ProtectedRoute>} />
- *   <Route path="/admin"    element={<ProtectedRoute role="manager"><AdminPage /></ProtectedRoute>} />
+ *   <Route path="/admin"    element={<ProtectedRoute role="manager"><AdminDashboardPage /></ProtectedRoute>} />
  *
  * Behaviour:
  *   - Auth loading → spinner (prevents flash redirect)

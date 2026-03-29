@@ -4,7 +4,7 @@
  * Gated by ProtectedRoute with role="debug".
  * Provides quick stock manipulation, cart seeding, and inventory overview.
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -38,17 +38,18 @@ const normalise = (s) =>
 
 /* ── Auth Debug sub-component ──────────────────────── */
 function AuthDebugSection({ user }) {
-  const [authEvents, setAuthEvents] = useState([]);
-  const [authRequests, setAuthRequests] = useState([]);
-  const [callbackDebug, setCallbackDebug] = useState(null);
-  const [returnPath, setReturnPath] = useState('');
-
-  useEffect(() => {
-    try { setAuthEvents(JSON.parse(sessionStorage.getItem('nobre_amor_auth_debug') || '[]')); } catch { /* ok */ }
-    try { setAuthRequests(JSON.parse(sessionStorage.getItem('nobre_amor_auth_requests') || '[]')); } catch { /* ok */ }
-    try { setCallbackDebug(JSON.parse(sessionStorage.getItem('nobre_amor_callback_debug') || 'null')); } catch { /* ok */ }
-    try { setReturnPath(sessionStorage.getItem('nobre_amor_return_path') || '(empty)'); } catch { /* ok */ }
-  }, []);
+  const [authEvents, setAuthEvents] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('nobre_amor_auth_debug') || '[]'); } catch { return []; }
+  });
+  const [authRequests, setAuthRequests] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('nobre_amor_auth_requests') || '[]'); } catch { return []; }
+  });
+  const [callbackDebug, setCallbackDebug] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('nobre_amor_callback_debug') || 'null'); } catch { return null; }
+  });
+  const [returnPath] = useState(() => {
+    try { return sessionStorage.getItem('nobre_amor_return_path') || '(empty)'; } catch { return '(empty)'; }
+  });
 
   const clearLogs = () => {
     try { sessionStorage.removeItem('nobre_amor_auth_debug'); } catch { /* ok */ }

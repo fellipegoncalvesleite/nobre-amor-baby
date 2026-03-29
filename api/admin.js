@@ -15,7 +15,6 @@
  * Falls back to x-admin-key header for backwards compatibility during migration.
  */
 
-/* eslint-disable no-undef */
 import { createClient } from '@supabase/supabase-js';
 import { requireManager } from './_supabaseAdmin.js';
 
@@ -73,7 +72,7 @@ export default async function handler(req, res) {
   if (!sbUrl || !sbKey) return json(res, 500, { error: 'missing_env', message: 'Database not configured.' });
   const supabase = createClient(sbUrl, sbKey);
 
-  const { resource, id, action } = req.query;
+  const { resource, id } = req.query;
 
   try {
     switch (resource) {

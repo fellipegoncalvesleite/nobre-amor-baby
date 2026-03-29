@@ -1,22 +1,40 @@
 /**
- * /api/public — unified public read-only router
+ * /api/public — unified public router
  *
- * Routes by ?resource=xxx:
- *   resource=home        GET homepage config with resolved collections/featured
- *   resource=products    GET public product list (supports collection, featured, slug, search, limit)
- *   resource=collections GET active collections list (supports ?slug=xxx)
- *
- * No auth required. Cached for 60s.
+ * Supported resources:
+ *   home, products, collections, order, cancel-order, retry-payment, profile, my-orders
  */
-
-/* eslint-disable no-undef */
-import { createClient } from '@supabase/supabase-js';
-import { verifyUser } from './_supabaseAdmin.js';
+import { getSupabase, verifyUser } from './_supabaseAdmin.js';
+import { createAsaasOrderPayment, getRequestBaseUrl, isRetryablePaymentState, toPaymentPayload } from './_asaas.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   return res.status(status).json(body);
 }
+
+function sanitizeOrder(order, items = []) {
+  const { id: _id, ...safe } = order;
+  return {
+    ...safe,
+    items,
+    items_count: items.length,
+    payment: toPaymentPayload(order),
+  };
+}
+
+const PUBLIC_ORDER_SELECT = `
+  id, order_code, status, created_at,
+  customer_name, customer_phone, customer_email,
+  customer_message,
+  address_cep, address_street, address_number, address_complement,
+  address_neighborhood, address_city, address_uf,
+  shipping_fee_cents, shipping_eta_text, shipping_provider,
+  subtotal_cents, total_cents, paid_total_cents,
+  payment_method, payment_ref, payment_state, payment_provider,
+  payment_external_id, payment_link_url, payment_pix_copy_paste,
+  payment_pix_qr_code, payment_expires_at, paid_at, payment_last_event,
+  cancel_reason, cancelled_at, rejected_reason, rejected_at, confirmed_at
+`;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -25,44 +43,42 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   if (req.method !== 'GET' && req.method !== 'POST') {
-    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET or POST.' });
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use GET ou POST.' });
   }
 
-  const sbUrl = process.env.SUPABASE_URL;
-  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!sbUrl || !sbKey) return json(res, 500, { error: 'missing_env', message: 'Database not configured.' });
-  const supabase = createClient(sbUrl, sbKey);
-
-  const { resource } = req.query;
-
   try {
+    const supabase = getSupabase();
+    const { resource } = req.query;
+
     switch (resource) {
       case 'home':
-        return await handleHome(req, res, supabase);
+        return handleHome(req, res, supabase);
       case 'products':
-        return await handleProducts(req, res, supabase);
+        return handleProducts(req, res, supabase);
       case 'collections':
-        return await handleCollections(req, res, supabase);
+        return handleCollections(req, res, supabase);
       case 'order':
-        return await handleOrder(req, res, supabase);
+        return handleOrder(req, res, supabase);
       case 'cancel-order':
-        return await handleCancelOrder(req, res, supabase);
+        return handleCancelOrder(req, res, supabase);
+      case 'retry-payment':
+        return handleRetryPayment(req, res, supabase);
       case 'profile':
-        return await handleProfile(req, res, supabase);
+        return handleProfile(req, res, supabase);
       case 'my-orders':
-        return await handleMyOrders(req, res, supabase);
+        return handleMyOrders(req, res, supabase);
       default:
-        return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?resource= parameter. Use: home, products, collections, order, cancel-order, profile, my-orders.' });
+        return json(res, 400, {
+          error: 'bad_request',
+          message: 'Missing or invalid ?resource=. Use: home, products, collections, order, cancel-order, retry-payment, profile, my-orders.',
+        });
     }
   } catch (err) {
-    console.error(`[public/${resource}] error:`, err);
-    return json(res, 500, { error: 'internal_error', message: err.message });
+    console.error(`[public/${req.query.resource}] error:`, err);
+    return json(res, 500, { error: 'internal_error', message: err.message || 'Erro interno.' });
   }
 }
 
-/* ══════════════════════════════════════════════════
-   HOME — homepage config with resolved data
-   ══════════════════════════════════════════════════ */
 async function handleHome(req, res, supabase) {
   const HOME_DEFAULTS = {
     collections_enabled: true,
@@ -73,34 +89,27 @@ async function handleHome(req, res, supabase) {
     featured_order: [],
   };
 
-  // 1. Homepage settings
-  const { data: settings, error: sErr } = await supabase
+  const { data: settings, error: settingsErr } = await supabase
     .from('homepage_settings')
     .select('*')
     .eq('key', 'home')
     .maybeSingle();
 
-  if (sErr) {
-    // Table missing — return sensible defaults so storefront still works
-    const isTableMissing =
-      sErr.code === '42P01' ||
-      sErr.code === 'PGRST204' ||
-      /does not exist|not found.*relation|homepage_settings/i.test(sErr.message || '');
+  if (settingsErr) {
+    const isMissingTable =
+      settingsErr.code === '42P01' ||
+      settingsErr.code === 'PGRST204' ||
+      /does not exist|not found.*relation|homepage_settings/i.test(settingsErr.message || '');
 
-    if (isTableMissing) {
+    if (isMissingTable) {
       res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
-      return json(res, 200, {
-        ...HOME_DEFAULTS,
-        collections: [],
-        featured: [],
-      });
+      return json(res, 200, { ...HOME_DEFAULTS, collections: [], featured: [] });
     }
-    return json(res, 500, { error: 'db_error', message: sErr.message });
+
+    return json(res, 500, { error: 'db_error', message: settingsErr.message });
   }
 
-  // Use row data or defaults if row is missing
   const cfg = settings || HOME_DEFAULTS;
-
   const result = {
     collections_enabled: cfg.collections_enabled,
     featured_enabled: cfg.featured_enabled,
@@ -110,39 +119,27 @@ async function handleHome(req, res, supabase) {
     featured: [],
   };
 
-  // 2. Resolve collections
   if (cfg.collections_enabled) {
     let query = supabase.from('collections').select('*').eq('is_active', true);
-
     if (cfg.collections_order?.length) {
-      const { data: colls } = await query.in('id', cfg.collections_order);
-      const orderMap = {};
-      cfg.collections_order.forEach((id, i) => { orderMap[id] = i; });
-      result.collections = (colls || []).sort(
-        (a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999)
-      );
+      const { data: collections } = await query.in('id', cfg.collections_order);
+      const orderMap = Object.fromEntries(cfg.collections_order.map((id, index) => [id, index]));
+      result.collections = (collections || []).sort((a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999));
     } else {
-      const { data: colls } = await query.order('name');
-      result.collections = colls || [];
+      const { data: collections } = await query.order('name');
+      result.collections = collections || [];
     }
   }
 
-  // 3. Resolve featured products
   if (cfg.featured_enabled) {
-    let query = supabase.from('products').select('*')
-      .eq('is_public', true)
-      .eq('in_stock', true);
-
+    let query = supabase.from('products').select('*').eq('is_public', true).eq('in_stock', true);
     if (cfg.featured_order?.length) {
-      const { data: prods } = await query.in('id', cfg.featured_order);
-      const orderMap = {};
-      cfg.featured_order.forEach((id, i) => { orderMap[id] = i; });
-      result.featured = (prods || []).sort(
-        (a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999)
-      );
+      const { data: products } = await query.in('id', cfg.featured_order);
+      const orderMap = Object.fromEntries(cfg.featured_order.map((id, index) => [id, index]));
+      result.featured = (products || []).sort((a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999));
     } else {
-      const { data: prods } = await query.eq('featured', true).order('created_at', { ascending: false }).limit(12);
-      result.featured = prods || [];
+      const { data: products } = await query.eq('featured', true).order('created_at', { ascending: false }).limit(12);
+      result.featured = products || [];
     }
   }
 
@@ -150,13 +147,9 @@ async function handleHome(req, res, supabase) {
   return json(res, 200, result);
 }
 
-/* ══════════════════════════════════════════════════
-   PRODUCTS — public product list
-   ══════════════════════════════════════════════════ */
 async function handleProducts(req, res, supabase) {
   const { collection, featured, slug, search, limit } = req.query;
 
-  // Single product by slug
   if (slug) {
     const { data, error } = await supabase
       .from('products')
@@ -165,40 +158,23 @@ async function handleProducts(req, res, supabase) {
       .eq('is_public', true)
       .single();
 
-    if (error || !data) return json(res, 404, { error: 'not_found', message: 'Product not found' });
+    if (error || !data) return json(res, 404, { error: 'not_found', message: 'Produto não encontrado.' });
     return json(res, 200, { product: data });
   }
 
-  let query = supabase
-    .from('products')
-    .select('*')
-    .eq('is_public', true);
+  let query = supabase.from('products').select('*').eq('is_public', true);
+  if (collection) query = query.eq('collection_id', collection);
+  if (featured === 'true') query = query.eq('featured', true);
+  if (search) query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
 
-  if (collection) {
-    query = query.eq('collection_id', collection);
-  }
-
-  if (featured === 'true') {
-    query = query.eq('featured', true);
-  }
-
-  if (search) {
-    query = query.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
-  }
-
-  const max = Math.min(parseInt(limit) || 50, 200);
-  query = query.order('created_at', { ascending: false }).limit(max);
-
-  const { data, error } = await query;
+  const max = Math.min(parseInt(limit, 10) || 50, 200);
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(max);
   if (error) return json(res, 500, { error: 'db_error', message: error.message });
 
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
   return json(res, 200, { products: data || [] });
 }
 
-/* ══════════════════════════════════════════════════
-   COLLECTIONS — active collections
-   ══════════════════════════════════════════════════ */
 async function handleCollections(req, res, supabase) {
   const { slug } = req.query;
 
@@ -210,9 +186,8 @@ async function handleCollections(req, res, supabase) {
       .eq('is_active', true)
       .single();
 
-    if (error || !data) return json(res, 404, { error: 'not_found', message: 'Collection not found' });
+    if (error || !data) return json(res, 404, { error: 'not_found', message: 'Coleção não encontrada.' });
 
-    // Also get products for this collection
     const { data: products } = await supabase
       .from('products')
       .select('*')
@@ -236,116 +211,78 @@ async function handleCollections(req, res, supabase) {
   return json(res, 200, { collections: data || [] });
 }
 
-/* ══════════════════════════════════════════════════
-   ORDER — public order lookup by orderCode
-   ══════════════════════════════════════════════════ */
 async function handleOrder(req, res, supabase) {
   const { orderCode } = req.query;
-
   if (!orderCode || typeof orderCode !== 'string' || orderCode.length < 5) {
-    return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?orderCode= parameter.' });
+    return json(res, 400, { error: 'bad_request', message: 'Missing or invalid ?orderCode=.' });
   }
 
-  // Fetch order (limited fields — no manager notes / internal data)
-  const { data: order, error: oErr } = await supabase
+  const { data: order, error: orderErr } = await supabase
     .from('orders')
-    .select(`
-      id, order_code, status, created_at,
-      customer_name,
-      address_cep, address_street, address_number, address_complement,
-      address_neighborhood, address_city, address_uf,
-      shipping_fee_cents, shipping_eta_text, shipping_provider,
-      subtotal_cents, total_cents,
-      payment_method,
-      cancel_reason, cancelled_at
-    `)
+    .select(PUBLIC_ORDER_SELECT)
     .eq('order_code', orderCode)
     .maybeSingle();
 
-  if (oErr) {
-    console.error('[public/order] fetch error:', oErr);
+  if (orderErr) {
+    console.error('[public/order] fetch error:', orderErr);
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
   }
   if (!order) {
     return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
   }
 
-  // Fetch items
   const { data: items } = await supabase
     .from('order_items')
-    .select('id, product_name, size, qty, unit_price_cents, line_total_cents')
+    .select('id, product_id, product_name, size, qty, unit_price_cents, line_total_cents')
     .eq('order_id', order.id)
     .order('id');
 
-  // Return sanitized order (no internal IDs exposed beyond order_code)
-  const result = { ...order };
-  delete result.id; // hide internal DB id
-  result.items = items || [];
-  result.items_count = (items || []).length;
-
   res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=30');
-  return json(res, 200, { order: result });
+  return json(res, 200, { order: sanitizeOrder(order, items || []) });
 }
 
-/* ══════════════════════════════════════════════════
-   CANCEL ORDER — customer cancels their own order
-   POST /api/public?resource=cancel-order
-   Body: { orderCode, reason }
-   Only allowed when status is 'new' (pending).
-   ══════════════════════════════════════════════════ */
 async function handleCancelOrder(req, res, supabase) {
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
   }
 
-  const body = req.body || {};
-  const { orderCode, reason } = body;
-
+  const { orderCode, reason } = req.body || {};
   if (!orderCode || typeof orderCode !== 'string' || orderCode.length < 5) {
     return json(res, 400, { error: 'bad_request', message: 'orderCode é obrigatório.' });
   }
   if (!reason || typeof reason !== 'string' || reason.trim().length < 3) {
-    return json(res, 400, { error: 'bad_request', message: 'Informe o motivo do cancelamento (mínimo 3 caracteres).' });
+    return json(res, 400, { error: 'bad_request', message: 'Informe o motivo do cancelamento.' });
   }
 
-  // Fetch current order
-  const { data: order, error: oErr } = await supabase
+  const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, order_code, status')
+    .select('id, order_code, status, payment_state')
     .eq('order_code', orderCode)
     .maybeSingle();
 
-  if (oErr) {
-    console.error('[public/cancel-order] fetch error:', oErr);
+  if (fetchErr) {
+    console.error('[public/cancel-order] fetch error:', fetchErr);
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
   }
-  if (!order) {
-    return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
-  }
+  if (!order) return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
 
-  // Only allow cancelling if status is 'new'
   if (order.status !== 'new') {
-    const statusLabels = {
-      confirmed: 'confirmado', rejected: 'recusado', cancelled: 'cancelado',
-      packing: 'em embalagem', shipped: 'enviado', done: 'concluído',
-    };
-    const label = statusLabels[order.status] || order.status;
-    return json(res, 400, {
-      error: 'cannot_cancel',
-      message: `Não é possível cancelar: o pedido já está ${label}.`,
-    });
+    return json(res, 400, { error: 'cannot_cancel', message: 'Este pedido já entrou em processamento e não pode mais ser cancelado.' });
+  }
+  if (order.payment_state === 'paid') {
+    return json(res, 400, { error: 'cannot_cancel_paid', message: 'Este pedido já foi pago. Entre em contato para suporte.' });
   }
 
-  // Update order
   const { data: updated, error: updateErr } = await supabase
     .from('orders')
     .update({
       status: 'cancelled',
+      payment_state: 'cancelled',
       cancel_reason: reason.trim(),
       cancelled_at: new Date().toISOString(),
     })
     .eq('id', order.id)
-    .select('order_code, status')
+    .select('order_code, status, payment_state')
     .single();
 
   if (updateErr) {
@@ -353,25 +290,103 @@ async function handleCancelOrder(req, res, supabase) {
     return json(res, 500, { error: 'db_error', message: 'Falha ao cancelar pedido.' });
   }
 
-  console.log('[public/cancel-order] cancelled %s, reason: %s', orderCode, reason.trim());
-
   return json(res, 200, {
     success: true,
     orderCode: updated.order_code,
     status: updated.status,
+    paymentState: updated.payment_state,
     message: 'Pedido cancelado com sucesso.',
   });
 }
 
-/* ══════════════════════════════════════════════════
-   PROFILE — fetch user's profile by userId (JWT checked)
-   GET /api/public?resource=profile&userId=xxx
-   ══════════════════════════════════════════════════ */
+async function handleRetryPayment(req, res, supabase) {
+  if (req.method !== 'POST') {
+    return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
+  }
+
+  const { orderCode, method } = req.body || {};
+  if (!orderCode || typeof orderCode !== 'string' || orderCode.length < 5) {
+    return json(res, 400, { error: 'bad_request', message: 'orderCode é obrigatório.' });
+  }
+
+  const { data: order, error: orderErr } = await supabase
+    .from('orders')
+    .select(PUBLIC_ORDER_SELECT)
+    .eq('order_code', orderCode)
+    .maybeSingle();
+
+  if (orderErr) {
+    console.error('[public/retry-payment] fetch order error:', orderErr);
+    return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
+  }
+  if (!order) return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
+  if (order.status !== 'new') {
+    return json(res, 400, { error: 'invalid_status', message: 'A cobrança só pode ser recriada para pedidos novos.' });
+  }
+  if (!isRetryablePaymentState(order.payment_state)) {
+    return json(res, 400, { error: 'payment_not_retryable', message: 'Este pedido ainda não pode gerar uma nova cobrança.' });
+  }
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('order_items')
+    .select('id, product_id, product_name, size, qty, unit_price_cents, line_total_cents')
+    .eq('order_id', order.id)
+    .order('id');
+
+  if (itemsErr) {
+    console.error('[public/retry-payment] fetch items error:', itemsErr);
+    return json(res, 500, { error: 'db_error', message: 'Erro ao buscar itens do pedido.' });
+  }
+
+  try {
+    const paymentResult = await createAsaasOrderPayment({
+      order,
+      items: items || [],
+      paymentMethod: method || order.payment_method,
+      requestBaseUrl: getRequestBaseUrl(req),
+    });
+
+    const { error: updateErr } = await supabase
+      .from('orders')
+      .update({
+        ...paymentResult.orderUpdate,
+        payment_state: paymentResult.payload.state,
+      })
+      .eq('id', order.id);
+
+    if (updateErr) {
+      console.error('[public/retry-payment] update error:', updateErr);
+      return json(res, 500, { error: 'db_error', message: 'Não foi possível salvar a nova cobrança.' });
+    }
+
+    return json(res, 200, {
+      success: true,
+      orderCode: order.order_code,
+      status: order.status,
+      payment: paymentResult.payload,
+    });
+  } catch (err) {
+    console.error('[public/retry-payment] create error:', err);
+
+    await supabase
+      .from('orders')
+      .update({
+        payment_state: 'failed',
+        payment_last_event: 'PAYMENT_RETRY_FAILED',
+      })
+      .eq('id', order.id);
+
+    return json(res, 500, {
+      error: 'retry_failed',
+      message: err.message || 'Falha ao gerar nova cobrança.',
+    });
+  }
+}
+
 async function handleProfile(req, res, supabase) {
   const { userId } = req.query;
-
   if (!userId) {
-    return json(res, 400, { error: 'bad_request', message: 'Missing ?userId= parameter.' });
+    return json(res, 400, { error: 'bad_request', message: 'Missing ?userId=.' });
   }
 
   const { data: profile, error } = await supabase
@@ -381,7 +396,6 @@ async function handleProfile(req, res, supabase) {
     .maybeSingle();
 
   if (error) {
-    // Table may not exist yet
     const isTableMissing =
       error.code === '42P01' ||
       /does not exist|not found.*relation|profiles/i.test(error.message || '');
@@ -394,46 +408,43 @@ async function handleProfile(req, res, supabase) {
   return json(res, 200, { profile: profile || { id: userId, role: 'customer' } });
 }
 
-/* ══════════════════════════════════════════════════
-   MY ORDERS — fetch orders for the authenticated user
-   GET /api/public?resource=my-orders  (Authorization: Bearer <token>)
-   ══════════════════════════════════════════════════ */
 async function handleMyOrders(req, res, supabase) {
-  // Verify JWT
   const { user } = await verifyUser(req);
   if (!user) {
     return json(res, 401, { error: 'unauthorized', message: 'Token inválido ou ausente.' });
   }
 
-  // Find orders by user_id OR by customer_email matching the user's email
-  const { data: orders, error: oErr } = await supabase
+  const { data: orders, error: ordersErr } = await supabase
     .from('orders')
     .select(`
-      id, order_code, status, created_at,
-      customer_name,
-      shipping_fee_cents, subtotal_cents, total_cents,
-      payment_method, cancel_reason, cancelled_at
+      id, order_code, status, created_at, customer_name,
+      subtotal_cents, shipping_fee_cents, total_cents,
+      payment_method, payment_state, paid_at,
+      payment_link_url, payment_pix_copy_paste, payment_pix_qr_code, payment_expires_at,
+      cancel_reason, cancelled_at
     `)
     .or(`user_id.eq.${user.id},customer_email.eq.${user.email}`)
     .order('created_at', { ascending: false })
     .limit(100);
 
-  if (oErr) {
-    console.error('[public/my-orders] error:', oErr);
+  if (ordersErr) {
+    console.error('[public/my-orders] error:', ordersErr);
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedidos.' });
   }
 
-  // For each order, fetch item count
   const result = [];
-  for (const o of (orders || [])) {
+  for (const currentOrder of orders || []) {
     const { count } = await supabase
       .from('order_items')
       .select('id', { count: 'exact', head: true })
-      .eq('order_id', o.id);
+      .eq('order_id', currentOrder.id);
 
-    const { id, ...safe } = o;
-    safe.items_count = count || 0;
-    result.push(safe);
+    const payment = toPaymentPayload(currentOrder);
+    result.push({
+      ...currentOrder,
+      items_count: count || 0,
+      payment,
+    });
   }
 
   return json(res, 200, { orders: result });

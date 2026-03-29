@@ -119,9 +119,9 @@ export default function Header() {
               aria-label="Nobre Amor Baby — Início"
             >
               <img
-                src="/logo.png"
+                src="/logo.svg"
                 alt=""
-                className="h-10 md:h-12 w-auto object-contain"
+                className="h-11 w-11 md:h-14 md:w-14 object-contain"
                 onError={(e) => {
                   e.target.style.display = 'none';
                   if (e.target.nextSibling) e.target.nextSibling.style.display = 'block';
@@ -260,7 +260,7 @@ export default function Header() {
                       {/* Standard menu items */}
                       <div className="py-1">
                         <Link
-                          to="/entrar"
+                          to="/minha-conta"
                           role="menuitem"
                           onClick={() => setIsAccountOpen(false)}
                           className={`flex items-center gap-3 px-4 py-2.5 font-sans text-sm text-baby-text/70
@@ -462,6 +462,19 @@ export default function Header() {
                           <span>Painel (Admin)</span>
                         </Link>
                       )}
+
+                      <Link
+                        to="/minha-conta"
+                        onClick={closeMobile}
+                        className="flex items-center gap-2 min-h-12 px-4 py-3 rounded-xl
+                                   text-baby-text/80 hover:text-baby-text
+                                   hover:bg-baby-pink/30 active:bg-baby-pink/50
+                                   transition-colors font-sans
+                                   focus:outline-none focus:ring-2 focus:ring-baby-accent"
+                      >
+                        <FiUser size={18} aria-hidden="true" />
+                        <span>Minha Conta</span>
+                      </Link>
                       {authUser?.role === 'debug' && (
                         <Link
                           to="/debug"
