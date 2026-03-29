@@ -98,7 +98,7 @@ export default function OrderSuccessPage() {
                 <p className="font-sans text-xs uppercase tracking-[0.2em] text-baby-text/45 mb-1">
                   Código do pedido
                 </p>
-                <p className="font-mono text-xl font-bold text-baby-accent select-all">
+                <p className="font-mono text-xl font-bold text-baby-text select-all">
                   {orderCode}
                 </p>
               </div>
@@ -191,7 +191,7 @@ export default function OrderSuccessPage() {
                 </div>
               )}
 
-              {payment.state === 'pending' && payment.method === 'cartao' && (
+              {payment.state === 'pending' && payment.method === 'cartao' && payment.url === '__hosted_card_disabled__' && (
                 <div className="rounded-2xl border border-baby-pink/60 bg-baby-pink/12 p-5">
                   <p className="font-sans text-sm text-baby-text/65 leading-relaxed mb-4">
                     O pagamento com cartão é concluído na página hospedada do Asaas. Se você fechar a aba, o link continua disponível nos detalhes do pedido.
@@ -212,6 +212,21 @@ export default function OrderSuccessPage() {
                       O link do pagamento ainda não está disponível.
                     </p>
                   )}
+                </div>
+              )}
+              {payment.state === 'pending' && payment.method === 'cartao' && (
+                <div className="rounded-2xl border border-baby-pink/60 bg-baby-pink/12 p-5">
+                  <p className="font-sans text-sm text-baby-text/65 leading-relaxed">
+                    Recebemos o pagamento com cartÃ£o e ele estÃ¡ em anÃ¡lise. Acompanhe o status em Meus Pedidos.
+                  </p>
+                </div>
+              )}
+
+              {payment.state === 'failed' && payment.method === 'cartao' && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+                  <p className="font-sans text-sm text-red-700 leading-relaxed">
+                    O pagamento com cartÃ£o falhou. RefaÃ§a a compra em Meus Pedidos para informar o cartÃ£o novamente.
+                  </p>
                 </div>
               )}
             </section>

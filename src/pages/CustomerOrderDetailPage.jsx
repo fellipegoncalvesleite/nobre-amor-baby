@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   FiArrowLeft,
@@ -13,6 +13,7 @@ import {
   FiTruck,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { useStore } from '../context/StoreContext';
 import { btnSecondary, focusRing, formatPrice } from '../lib/ui';
 import {
   canCancelOrder,
@@ -26,6 +27,8 @@ const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12p
 
 export default function CustomerOrderDetailPage() {
   const { orderCode } = useParams();
+  const navigate = useNavigate();
+  const { addToCart } = useStore();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -76,6 +79,29 @@ export default function CustomerOrderDetailPage() {
     } catch {
       toast.error('Não foi possível copiar o código Pix.', { style: toastStyle });
     }
+  };
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate('/meus-pedidos');
+  };
+
+  const handleReorder = () => {
+    const validItems = (order?.items || []).filter((item) => item.product_id);
+    if (validItems.length === 0) {
+      toast.error('Nao foi possivel montar este pedido novamente.', { style: toastStyle });
+      return;
+    }
+
+    validItems.forEach((item) => {
+      addToCart(String(item.product_id), item.size || '', Math.max(1, Number(item.qty || 1)));
+    });
+
+    toast.success('Itens adicionados ao carrinho.', { style: toastStyle });
+    navigate('/carrinho');
   };
 
   const handleRetryPayment = async () => {
@@ -156,6 +182,14 @@ export default function CustomerOrderDetailPage() {
   return (
     <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
+        <button
+          type="button"
+          onClick={handleBack}
+          className={`mb-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-sans text-xs text-baby-text/55 transition-colors hover:bg-white/60 hover:text-baby-text ${focusRing}`}
+        >
+          <FiArrowLeft size={13} />
+          Voltar
+        </button>
         <nav className="mb-6 font-sans text-sm text-baby-text/60" aria-label="Navegação de caminho">
           <ol className="flex items-center gap-1.5 flex-wrap">
             <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
@@ -173,7 +207,12 @@ export default function CustomerOrderDetailPage() {
                 <FiPackage className="text-baby-accent" size={22} />
               </div>
               <div>
-                <h1 className="font-serif text-xl sm:text-2xl text-baby-text">{order.order_code}</h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="font-serif text-xl sm:text-2xl text-baby-text">Pedido</h1>
+                  <span className="inline-flex items-center rounded-full border border-baby-text/10 bg-baby-cream px-3 py-1 font-mono text-xs text-baby-text/70">
+                    {order.order_code}
+                  </span>
+                </div>
                 <p className="font-sans text-xs text-baby-text/50 mt-1">Criado em {formatDate(order.created_at)}</p>
               </div>
             </div>
@@ -226,7 +265,7 @@ export default function CustomerOrderDetailPage() {
               <InfoRow label="Frete" value={formatPrice((order.shipping_fee_cents || 0) / 100)} />
               <div className="flex justify-between pt-2 border-t border-baby-pink/40">
                 <span className="font-sans text-sm font-semibold text-baby-text">Total</span>
-                <span className="font-sans text-sm font-bold text-baby-accent">{formatPrice((order.total_cents || 0) / 100)}</span>
+                <span className="font-sans text-sm font-bold text-baby-text">{formatPrice((order.total_cents || 0) / 100)}</span>
               </div>
 
               {order.payment_state === 'pending' && order.payment_method === 'pix' && (
@@ -250,12 +289,32 @@ export default function CustomerOrderDetailPage() {
                 </div>
               )}
 
-              {order.payment_state === 'pending' && order.payment_method === 'cartao' && order.payment?.url && (
+              {order.payment_state === 'pending' && order.payment_method === 'cartao' && order.payment?.url === '__hosted_card_disabled__' && (
                 <div className="pt-3">
                   <a href={order.payment.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-baby-text text-white font-sans text-sm">
                     Abrir pagamento com cartão
                     <FiExternalLink size={14} />
                   </a>
+                </div>
+              )}
+
+              {order.payment_state === 'pending' && order.payment_method === 'cartao' && (
+                <div className="pt-3">
+                  <div className="rounded-2xl border border-baby-text/10 bg-baby-cream p-4">
+                    <p className="font-sans text-sm text-baby-text/60">
+                      O pagamento com cartÃ£o estÃ¡ em anÃ¡lise. Atualize esta tela em instantes para acompanhar a confirmaÃ§Ã£o.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {order.payment_state === 'failed' && order.payment_method === 'cartao' && (
+                <div className="pt-3">
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                    <p className="font-sans text-sm text-red-700">
+                      O pagamento com cartÃ£o falhou. Use "Pedir de novo" para refazer a compra e informar o cartÃ£o novamente.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -305,7 +364,7 @@ export default function CustomerOrderDetailPage() {
                           {item.size ? `Tam. ${item.size} · ` : ''}{item.qty}x {formatPrice(item.unit_price_cents / 100)}
                         </p>
                       </div>
-                      <span className="font-sans text-sm font-medium text-baby-accent whitespace-nowrap">
+                      <span className="font-sans text-sm font-medium text-baby-text whitespace-nowrap">
                         {formatPrice(item.line_total_cents / 100)}
                       </span>
                     </li>
@@ -318,6 +377,15 @@ export default function CustomerOrderDetailPage() {
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3 justify-center">
+            <button
+              type="button"
+              onClick={handleReorder}
+              className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-baby-text text-white font-sans text-sm font-medium hover:bg-baby-text/85 ${focusRing}`}
+            >
+              <FiRefreshCw size={14} />
+              Pedir de novo
+            </button>
+
             {cancelAllowed && (
               <button
                 type="button"
@@ -328,11 +396,7 @@ export default function CustomerOrderDetailPage() {
                 Cancelar pedido
               </button>
             )}
-
-            <Link to="/meus-pedidos" className={btnSecondary}>
-              <FiArrowLeft size={14} />
-              Meus Pedidos
-            </Link>
+            <Link to="/meus-pedidos" className={btnSecondary}>Meus Pedidos</Link>
           </div>
         </motion.div>
 

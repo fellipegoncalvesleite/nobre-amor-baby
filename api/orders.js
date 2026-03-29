@@ -1,5 +1,5 @@
 /**
- * POST /api/orders — create a new order in Supabase + Asaas.
+ * POST /api/orders - create a new order in Supabase + Asaas.
  *
  * Response 201:
  * {
@@ -10,7 +10,12 @@
  * }
  */
 import { getSupabase, verifyUser } from './_supabaseAdmin.js';
-import { createAsaasOrderPayment, getRequestBaseUrl } from './_asaas.js';
+import {
+  createAsaasOrderPayment,
+  getRequestBaseUrl,
+  getRequestIp,
+  normalizeCpfCnpj,
+} from './_asaas.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -36,7 +41,7 @@ async function generateUniqueOrderCode(supabase) {
     if (!existing) return orderCode;
   }
 
-  throw new Error('Não foi possível gerar um código de pedido único.');
+  throw new Error('Nao foi possivel gerar um codigo de pedido unico.');
 }
 
 function buildPaymentFailure(method, message) {
@@ -55,6 +60,16 @@ function buildPaymentFailure(method, message) {
   };
 }
 
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeExpiryYear(value) {
+  const digits = digitsOnly(value);
+  if (digits.length === 2) return `20${digits}`;
+  return digits.slice(0, 4);
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -71,31 +86,57 @@ export default async function handler(req, res) {
     const { customer, address: addr, shipping, payment, items } = body;
 
     if (!customer?.name?.trim()) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.name é obrigatório.' });
+      return json(res, 400, { error: 'invalid_request', message: 'customer.name e obrigatorio.' });
     }
     if (!customer?.email?.trim()) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.email é obrigatório.' });
+      return json(res, 400, { error: 'invalid_request', message: 'customer.email e obrigatorio.' });
     }
     if (!customer?.phone?.trim()) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.phone é obrigatório.' });
+      return json(res, 400, { error: 'invalid_request', message: 'customer.phone e obrigatorio.' });
+    }
+    if (!normalizeCpfCnpj(customer?.cpfCnpj).match(/^\d{11}$|^\d{14}$/)) {
+      return json(res, 400, { error: 'invalid_request', message: 'customer.cpfCnpj e obrigatorio.' });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return json(res, 400, { error: 'invalid_request', message: 'items é obrigatório e não pode estar vazio.' });
+      return json(res, 400, { error: 'invalid_request', message: 'items e obrigatorio e nao pode estar vazio.' });
     }
     if (!['pix', 'cartao'].includes(payment?.method)) {
       return json(res, 400, { error: 'invalid_request', message: 'payment.method deve ser "pix" ou "cartao".' });
+    }
+    if (payment?.method === 'cartao') {
+      const card = payment?.card || {};
+      const number = digitsOnly(card.number);
+      const ccv = digitsOnly(card.ccv);
+      const month = digitsOnly(card.expiryMonth);
+      const year = normalizeExpiryYear(card.expiryYear);
+
+      if (!card.holderName?.trim()) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.holderName e obrigatorio.' });
+      }
+      if (number.length < 13 || number.length > 19) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.number e invalido.' });
+      }
+      if (!month.match(/^(0[1-9]|1[0-2])$/)) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.expiryMonth e invalido.' });
+      }
+      if (!year.match(/^\d{4}$/)) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.expiryYear e invalido.' });
+      }
+      if (ccv.length < 3 || ccv.length > 4) {
+        return json(res, 400, { error: 'invalid_request', message: 'payment.card.ccv e invalido.' });
+      }
     }
 
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
       if (!item?.productName && !item?.name) {
-        return json(res, 400, { error: 'invalid_request', message: `items[${i}].productName é obrigatório.` });
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].productName e obrigatorio.` });
       }
       if (Number(item?.qty) < 1) {
         return json(res, 400, { error: 'invalid_request', message: `items[${i}].qty deve ser >= 1.` });
       }
       if (item?.unitPriceCents == null || Number(item.unitPriceCents) < 0) {
-        return json(res, 400, { error: 'invalid_request', message: `items[${i}].unitPriceCents é obrigatório.` });
+        return json(res, 400, { error: 'invalid_request', message: `items[${i}].unitPriceCents e obrigatorio.` });
       }
     }
 
@@ -182,6 +223,9 @@ export default async function handler(req, res) {
         items: itemRows,
         paymentMethod: payment.method,
         requestBaseUrl: getRequestBaseUrl(req),
+        requestIp: getRequestIp(req),
+        card: payment.method === 'cartao' ? payment.card : null,
+        customerDocument: normalizeCpfCnpj(customer.cpfCnpj),
       });
 
       const { error: paymentUpdateErr } = await supabase
@@ -193,7 +237,7 @@ export default async function handler(req, res) {
         console.error('[orders] payment sync error:', paymentUpdateErr);
         return json(res, 500, {
           error: 'payment_sync_error',
-          message: 'Pedido criado, mas a cobrança não pôde ser sincronizada.',
+          message: 'Pedido criado, mas a cobranca nao pode ser sincronizada.',
           orderId: order.id,
           orderCode: order.order_code,
         });
@@ -207,7 +251,7 @@ export default async function handler(req, res) {
       });
     } catch (paymentErr) {
       console.error('[orders] payment creation error:', paymentErr);
-      const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobrança.');
+      const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobranca.');
 
       await supabase
         .from('orders')
@@ -224,7 +268,7 @@ export default async function handler(req, res) {
         orderCode: order.order_code,
         status: 'new',
         payment: failedPayment,
-        warning: 'Pedido criado, mas a cobrança falhou. Gere uma nova tentativa na área do pedido.',
+        warning: 'Pedido criado, mas a cobranca falhou. Refaça a compra em Meus Pedidos.',
       });
     }
   } catch (err) {

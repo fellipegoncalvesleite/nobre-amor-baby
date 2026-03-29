@@ -5,9 +5,9 @@ import {
   FiAlertTriangle,
   FiCheckCircle,
   FiChevronLeft,
-  FiClock,
   FiCreditCard,
   FiLoader,
+  FiLock,
   FiSend,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -20,12 +20,146 @@ import { saveOrderId } from '../utils/orderMessage';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function formatPhone(value) {
+  const digits = digitsOnly(value).slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+function formatCpfCnpj(value) {
+  const digits = digitsOnly(value).slice(0, 14);
+  if (digits.length <= 11) {
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+function formatCardNumber(value) {
+  return digitsOnly(value)
+    .slice(0, 19)
+    .replace(/(\d{4})(?=\d)/g, '$1 ')
+    .trim();
+}
+
+function formatExpiry(value) {
+  const digits = digitsOnly(value).slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+}
+
+function normalizeExpiry(value) {
+  const digits = digitsOnly(value).slice(0, 4);
+  const month = digits.slice(0, 2);
+  const year = digits.length === 4 ? `20${digits.slice(2)}` : '';
+  return { month, year, raw: digits };
+}
+
+function isValidCpfCnpj(value) {
+  const digits = digitsOnly(value);
+  return digits.length === 11 || digits.length === 14;
+}
+
+function isValidCardExpiry(value) {
+  const { month, year, raw } = normalizeExpiry(value);
+  if (raw.length !== 4) return false;
+  const monthNumber = Number(month);
+  const yearNumber = Number(year);
+  if (!monthNumber || monthNumber < 1 || monthNumber > 12 || !yearNumber) return false;
+
+  const now = new Date();
+  const expiry = new Date(yearNumber, monthNumber);
+  return expiry > now;
+}
+
 function paymentOptionClass(selected) {
-  return `rounded-2xl border p-4 text-left transition-colors ${
+  return `rounded-3xl border p-4 text-left transition-colors ${
     selected
-      ? 'border-baby-accent bg-baby-accent/8'
-      : 'border-baby-text/15 bg-surface hover:border-baby-accent/40'
+      ? 'border-baby-text bg-baby-text text-white shadow-soft'
+      : 'border-baby-text/12 bg-surface hover:border-baby-text/30'
   }`;
+}
+
+function PaymentMark({ type, selected }) {
+  if (type === 'pix') {
+    return (
+      <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${selected ? 'bg-white/16' : 'bg-emerald-100'}`}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M7.4 3.8a2.8 2.8 0 0 1 3.96 0l.64.64a2.8 2.8 0 0 0 3.96 0l.64-.64a2.8 2.8 0 0 1 3.96 0l1.6 1.6a2.8 2.8 0 0 1 0 3.96l-.64.64a2.8 2.8 0 0 0 0 3.96l.64.64a2.8 2.8 0 0 1 0 3.96l-1.6 1.6a2.8 2.8 0 0 1-3.96 0l-.64-.64a2.8 2.8 0 0 0-3.96 0l-.64.64a2.8 2.8 0 0 1-3.96 0l-1.6-1.6a2.8 2.8 0 0 1 0-3.96l.64-.64a2.8 2.8 0 0 0 0-3.96l-.64-.64a2.8 2.8 0 0 1 0-3.96l1.6-1.6Z"
+            stroke={selected ? '#FFFFFF' : '#0F766E'}
+            strokeWidth="1.7"
+          />
+          <path
+            d="m9.1 12.05 2.95-2.95 2.85 2.85-2.95 2.95-2.85-2.85Z"
+            fill={selected ? '#FFFFFF' : '#0F766E'}
+          />
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${selected ? 'bg-white/16' : 'bg-slate-200'}`}>
+      <svg width="24" height="18" viewBox="0 0 24 18" fill="none" aria-hidden="true">
+        <rect
+          x="1.25"
+          y="1.25"
+          width="21.5"
+          height="15.5"
+          rx="3.75"
+          stroke={selected ? '#FFFFFF' : '#334155'}
+          strokeWidth="1.5"
+        />
+        <path d="M2.5 6.5h19" stroke={selected ? '#FFFFFF' : '#334155'} strokeWidth="1.5" />
+        <path d="M6 12.25h4" stroke={selected ? '#FFFFFF' : '#334155'} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
+}
+
+function PaymentOption({ type, title, badge, selected, onClick }) {
+  return (
+    <button type="button" onClick={onClick} className={paymentOptionClass(selected)}>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <PaymentMark type={type} selected={selected} />
+          <div>
+            <p className={`font-sans text-sm font-semibold ${selected ? 'text-white' : 'text-baby-text'}`}>{title}</p>
+            <p className={`font-sans text-xs ${selected ? 'text-white/70' : 'text-baby-text/45'}`}>{badge}</p>
+          </div>
+        </div>
+        <span
+          className={`h-4 w-4 rounded-full border ${
+            selected ? 'border-white bg-white ring-4 ring-white/15' : 'border-baby-text/20'
+          }`}
+          aria-hidden="true"
+        />
+      </div>
+    </button>
+  );
+}
+
+function Row({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="font-sans text-sm text-baby-text/50">{label}</span>
+      <span className="font-sans text-sm text-baby-text">{value}</span>
+    </div>
+  );
 }
 
 export default function CheckoutPage() {
@@ -48,7 +182,14 @@ export default function CheckoutPage() {
     name: '',
     phone: '',
     email: '',
+    cpfCnpj: '',
     message: '',
+  });
+  const [cardForm, setCardForm] = useState({
+    holderName: '',
+    number: '',
+    expiry: '',
+    ccv: '',
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,6 +200,10 @@ export default function CheckoutPage() {
       email: prev.email || user?.email || '',
     }));
   }, [user]);
+
+  useEffect(() => {
+    setCardForm((prev) => (prev.holderName ? prev : { ...prev, holderName: form.name || '' }));
+  }, [form.name]);
 
   const items = useMemo(
     () => cart
@@ -86,21 +231,61 @@ export default function CheckoutPage() {
 
   const formValid =
     form.name.trim().length >= 2 &&
-    form.phone.trim().length >= 8 &&
-    form.email.trim().includes('@');
+    digitsOnly(form.phone).length >= 10 &&
+    form.email.trim().includes('@') &&
+    isValidCpfCnpj(form.cpfCnpj);
 
-  const canSubmit = items.length > 0 && shippingValid && formValid && ['pix', 'cartao'].includes(payment.method);
+  const cardValid =
+    cardForm.holderName.trim().length >= 3 &&
+    digitsOnly(cardForm.number).length >= 13 &&
+    digitsOnly(cardForm.number).length <= 19 &&
+    isValidCardExpiry(cardForm.expiry) &&
+    digitsOnly(cardForm.ccv).length >= 3 &&
+    digitsOnly(cardForm.ccv).length <= 4;
+
+  const canSubmit =
+    items.length > 0 &&
+    shippingValid &&
+    formValid &&
+    ['pix', 'cartao'].includes(payment.method) &&
+    (payment.method === 'pix' || cardValid);
 
   const handleField = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
+  const handlePhoneChange = (event) => {
+    setForm((prev) => ({ ...prev, phone: formatPhone(event.target.value) }));
+  };
+
+  const handleCpfCnpjChange = (event) => {
+    setForm((prev) => ({ ...prev, cpfCnpj: formatCpfCnpj(event.target.value) }));
+  };
+
+  const handleCardField = (field) => (event) => {
+    setCardForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleCardNumberChange = (event) => {
+    setCardForm((prev) => ({ ...prev, number: formatCardNumber(event.target.value) }));
+  };
+
+  const handleCardExpiryChange = (event) => {
+    setCardForm((prev) => ({ ...prev, expiry: formatExpiry(event.target.value) }));
+  };
+
+  const handleCardCvvChange = (event) => {
+    setCardForm((prev) => ({ ...prev, ccv: digitsOnly(event.target.value).slice(0, 4) }));
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!canSubmit || submitting) {
-      toast.error('Preencha seus dados, confirme o endereço e escolha um pagamento.', { style: toastStyle });
+      toast.error('Preencha os dados do cliente, endereço e pagamento para continuar.', { style: toastStyle });
       return;
     }
+
+    const expiry = normalizeExpiry(cardForm.expiry);
 
     setSubmitting(true);
     try {
@@ -113,8 +298,9 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           customer: {
             name: form.name.trim(),
-            phone: form.phone.trim(),
+            phone: digitsOnly(form.phone),
             email: form.email.trim(),
+            cpfCnpj: digitsOnly(form.cpfCnpj),
             message: form.message.trim(),
           },
           address,
@@ -125,6 +311,17 @@ export default function CheckoutPage() {
           },
           payment: {
             method: payment.method,
+            ...(payment.method === 'cartao'
+              ? {
+                  card: {
+                    holderName: cardForm.holderName.trim(),
+                    number: digitsOnly(cardForm.number),
+                    expiryMonth: expiry.month,
+                    expiryYear: expiry.year,
+                    ccv: digitsOnly(cardForm.ccv),
+                  },
+                }
+              : {}),
           },
           items: items.map((item) => ({
             productId: item.id,
@@ -138,7 +335,7 @@ export default function CheckoutPage() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || 'Não foi possível criar seu pedido.');
+        throw new Error(data.message || 'Nao foi possivel criar seu pedido.');
       }
 
       saveOrderId(data.orderCode);
@@ -147,9 +344,10 @@ export default function CheckoutPage() {
       clearShipping();
       clearAddress();
       resetPayment();
+      setCardForm({ holderName: '', number: '', expiry: '', ccv: '' });
 
       if (data.warning) {
-        toast('Pedido criado, mas a cobrança precisará ser refeita.', {
+        toast('Pedido criado, mas a cobranca precisara ser refeita.', {
           icon: '⚠️',
           style: toastStyle,
           duration: 4000,
@@ -176,7 +374,7 @@ export default function CheckoutPage() {
       <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
         <div className="max-w-xl mx-auto px-4 sm:px-6 text-center">
           <FiAlertTriangle size={36} className="mx-auto text-amber-500 mb-4" />
-          <h1 className="font-serif text-2xl text-baby-text mb-3">Seu carrinho está vazio</h1>
+          <h1 className="font-serif text-2xl text-baby-text mb-3">Seu carrinho esta vazio</h1>
           <p className="font-sans text-baby-text/60 mb-8">
             Adicione produtos antes de seguir para o checkout.
           </p>
@@ -189,9 +387,9 @@ export default function CheckoutPage() {
   return (
     <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <nav className="mb-6 font-sans text-sm text-baby-text/60" aria-label="Navegação de caminho">
+        <nav className="mb-6 font-sans text-sm text-baby-text/60" aria-label="Navegacao de caminho">
           <ol className="flex items-center gap-1.5 flex-wrap">
-            <li><Link to="/" className="hover:text-baby-accent transition-colors">Início</Link></li>
+            <li><Link to="/" className="hover:text-baby-accent transition-colors">Inicio</Link></li>
             <li aria-hidden="true">/</li>
             <li><Link to="/carrinho" className="hover:text-baby-accent transition-colors">Carrinho</Link></li>
             <li aria-hidden="true">/</li>
@@ -214,7 +412,7 @@ export default function CheckoutPage() {
                 <div>
                   <h1 className="font-serif text-2xl text-baby-text">Finalizar pedido</h1>
                   <p className="font-sans text-sm text-baby-text/50">
-                    Seus dados, entrega e forma de pagamento.
+                    Dados do cliente e entrega.
                   </p>
                 </div>
               </div>
@@ -235,33 +433,47 @@ export default function CheckoutPage() {
                     <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Telefone *</span>
                     <input
                       type="tel"
+                      inputMode="tel"
                       value={form.phone}
-                      onChange={handleField('phone')}
+                      onChange={handlePhoneChange}
                       className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm ${focusRing}`}
                       placeholder="(00) 00000-0000"
                     />
                   </label>
                 </div>
 
-                <label className="block">
-                  <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">E-mail *</span>
-                  <input
-                    type="email"
-                    value={form.email}
-                    onChange={handleField('email')}
-                    className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm ${focusRing}`}
-                    placeholder="voce@email.com"
-                  />
-                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="block">
+                    <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">E-mail *</span>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={handleField('email')}
+                      className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm ${focusRing}`}
+                      placeholder="voce@email.com"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">CPF ou CNPJ *</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={form.cpfCnpj}
+                      onChange={handleCpfCnpjChange}
+                      className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm ${focusRing}`}
+                      placeholder="000.000.000-00"
+                    />
+                  </label>
+                </div>
 
                 <label className="block">
-                  <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Observações</span>
+                  <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Observacoes</span>
                   <textarea
                     rows={3}
                     value={form.message}
                     onChange={handleField('message')}
                     className={`w-full rounded-xl border border-baby-text/15 bg-baby-cream px-4 py-3 font-sans text-sm resize-y ${focusRing}`}
-                    placeholder="Referência para entrega, presente, instruções especiais..."
+                    placeholder="Referencia para entrega, presente, instrucoes especiais..."
                   />
                 </label>
               </div>
@@ -279,53 +491,85 @@ export default function CheckoutPage() {
                 <div>
                   <h2 className="font-serif text-xl text-baby-text">Pagamento</h2>
                   <p className="font-sans text-sm text-baby-text/50">
-                    Escolha como deseja concluir o pagamento.
+                    Escolha como deseja pagar.
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  type="button"
+                <PaymentOption
+                  type="pix"
+                  title="Pix"
+                  badge="Instantaneo"
+                  selected={payment.method === 'pix'}
                   onClick={() => setPayment({ method: 'pix' })}
-                  className={paymentOptionClass(payment.method === 'pix')}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 h-4 w-4 rounded-full border ${payment.method === 'pix' ? 'border-baby-accent bg-baby-accent ring-4 ring-baby-accent/15' : 'border-baby-text/25'}`} />
-                    <div>
-                      <p className="font-sans text-sm font-semibold text-baby-text">Pix</p>
-                      <p className="font-sans text-xs text-baby-text/55 mt-1 leading-relaxed">
-                        O QR Code e o código copia e cola aparecem dentro do site logo após criar o pedido.
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
+                />
+                <PaymentOption
+                  type="cartao"
+                  title="Cartao"
+                  badge="1x no cartao"
+                  selected={payment.method === 'cartao'}
                   onClick={() => setPayment({ method: 'cartao' })}
-                  className={paymentOptionClass(payment.method === 'cartao')}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 h-4 w-4 rounded-full border ${payment.method === 'cartao' ? 'border-baby-accent bg-baby-accent ring-4 ring-baby-accent/15' : 'border-baby-text/25'}`} />
-                    <div>
-                      <p className="font-sans text-sm font-semibold text-baby-text">Cartão</p>
-                      <p className="font-sans text-xs text-baby-text/55 mt-1 leading-relaxed">
-                        Você será direcionado para a página hospedada do Asaas para concluir o pagamento com segurança.
-                      </p>
-                    </div>
-                  </div>
-                </button>
+                />
               </div>
 
-              <div className="mt-4 rounded-2xl border border-baby-pink/60 bg-baby-pink/12 p-4">
-                <div className="flex items-start gap-3">
-                  <FiClock className="text-baby-accent mt-0.5 shrink-0" size={16} />
-                  <p className="font-sans text-sm text-baby-text/65 leading-relaxed">
-                    O pedido será criado com status de separação independente do pagamento. O estoque só é baixado quando a gerente confirma o pedido no painel.
-                  </p>
+              {payment.method === 'cartao' && (
+                <div className="mt-5 rounded-3xl border border-baby-text/10 bg-baby-cream/90 p-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="block sm:col-span-2">
+                      <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Nome no cartao *</span>
+                      <input
+                        type="text"
+                        value={cardForm.holderName}
+                        onChange={handleCardField('holderName')}
+                        className={`w-full rounded-xl border border-baby-text/15 bg-white px-4 py-3 font-sans text-sm ${focusRing}`}
+                        placeholder="Como esta no cartao"
+                      />
+                    </label>
+
+                    <label className="block sm:col-span-2">
+                      <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Numero do cartao *</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={cardForm.number}
+                        onChange={handleCardNumberChange}
+                        className={`w-full rounded-xl border border-baby-text/15 bg-white px-4 py-3 font-sans text-sm ${focusRing}`}
+                        placeholder="0000 0000 0000 0000"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">Validade *</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={cardForm.expiry}
+                        onChange={handleCardExpiryChange}
+                        className={`w-full rounded-xl border border-baby-text/15 bg-white px-4 py-3 font-sans text-sm ${focusRing}`}
+                        placeholder="MM/AA"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="block font-sans text-xs font-medium text-baby-text/60 mb-1.5">CVV *</span>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        value={cardForm.ccv}
+                        onChange={handleCardCvvChange}
+                        className={`w-full rounded-xl border border-baby-text/15 bg-white px-4 py-3 font-sans text-sm ${focusRing}`}
+                        placeholder="000"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-baby-text/55">
+                    <FiLock size={12} />
+                    Cartao em 1x
+                  </div>
                 </div>
-              </div>
+              )}
             </section>
 
             <div className="flex flex-wrap gap-3">
@@ -355,9 +599,9 @@ export default function CheckoutPage() {
                     <div className="min-w-0 flex-1">
                       <p className="font-sans text-sm font-medium text-baby-text truncate">{item.product.name}</p>
                       <p className="font-sans text-xs text-baby-text/45 mt-0.5">
-                        Tam. {item.size || 'Único'} · {item.qty}x
+                        Tam. {item.size || 'Unico'} · {item.qty}x
                       </p>
-                      <p className="font-sans text-sm text-baby-accent mt-1">
+                      <p className="font-sans text-sm text-baby-text mt-1">
                         {formatPrice(item.product.price * item.qty)}
                       </p>
                     </div>
@@ -369,37 +613,20 @@ export default function CheckoutPage() {
                 <Row label="Subtotal" value={formatPrice(subtotalCents / 100)} />
                 <Row
                   label="Frete"
-                  value={shipping.feeCents != null ? formatPrice(shippingCents / 100) : 'Calcular endereço'}
+                  value={shipping.feeCents != null ? formatPrice(shippingCents / 100) : 'Calcular endereco'}
                 />
+                <Row label="Pagamento" value={payment.method === 'cartao' ? 'Cartao' : 'Pix'} />
                 <div className="flex items-center justify-between pt-2 border-t border-baby-pink/40">
                   <span className="font-sans text-sm font-semibold text-baby-text">Total</span>
-                  <span className="font-sans text-lg font-bold text-baby-accent">
+                  <span className="font-sans text-lg font-bold text-baby-text">
                     {formatPrice(totalCents / 100)}
                   </span>
                 </div>
               </div>
             </section>
-
-            <section className="bg-surface rounded-3xl shadow-soft p-6">
-              <h3 className="font-serif text-lg text-baby-text mb-3">Depois do envio</h3>
-              <ul className="space-y-3 font-sans text-sm text-baby-text/60">
-                <li>Você verá o QR Code Pix ou o link do cartão na próxima tela.</li>
-                <li>Os pedidos ficam disponíveis em “Meus Pedidos” e também em “Minha Conta”.</li>
-                <li>Se a cobrança expirar ou falhar, você poderá gerar uma nova sem criar outro pedido.</li>
-              </ul>
-            </section>
           </aside>
         </motion.div>
       </div>
     </section>
-  );
-}
-
-function Row({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="font-sans text-sm text-baby-text/50">{label}</span>
-      <span className="font-sans text-sm text-baby-text">{value}</span>
-    </div>
   );
 }

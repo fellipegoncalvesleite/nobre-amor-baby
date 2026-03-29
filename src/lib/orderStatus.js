@@ -43,7 +43,9 @@ export function getPaymentMethodLabel(method) {
 }
 
 export function canRetryPayment(order) {
-  return order?.status === 'new' && ['expired', 'failed'].includes(order?.payment_state);
+  return order?.status === 'new' &&
+    order?.payment_method === 'pix' &&
+    ['expired', 'failed'].includes(order?.payment_state);
 }
 
 export function canCancelOrder(order) {
