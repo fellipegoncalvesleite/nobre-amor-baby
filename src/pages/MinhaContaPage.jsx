@@ -1,11 +1,47 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiCreditCard, FiLogOut, FiPackage, FiRefreshCw } from 'react-icons/fi';
+import { FiCamera, FiCreditCard, FiLoader, FiLogOut, FiPackage, FiRefreshCw } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabaseClient';
 import { btnPrimary, btnSecondary, focusRing, formatPrice } from '../lib/ui';
 import { getPaymentStatus, getFulfillmentStatus } from '../lib/orderStatus';
 import AccountAvatar from '../components/AccountAvatar';
+
+const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Nao foi possivel ler a imagem.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function resizeImageToSquare(file, size = 512) {
+  const dataUrl = await fileToDataUrl(file);
+  const image = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Nao foi possivel processar a imagem.'));
+    img.src = dataUrl;
+  });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas indisponivel.');
+
+  const side = Math.min(image.width, image.height);
+  const sx = (image.width - side) / 2;
+  const sy = (image.height - side) / 2;
+  context.drawImage(image, sx, sy, side, side, 0, 0, size, size);
+
+  return canvas.toDataURL('image/jpeg', 0.86);
+}
 
 export default function MinhaContaPage() {
   const navigate = useNavigate();
@@ -13,6 +49,7 @@ export default function MinhaContaPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -47,6 +84,59 @@ export default function MinhaContaPage() {
     navigate('/', { replace: true });
   };
 
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !accessToken || uploadingAvatar) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Escolha uma imagem JPG, PNG ou WEBP.', { style: toastStyle });
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('A imagem original deve ter no maximo 4MB.', { style: toastStyle });
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const resizedImage = await resizeImageToSquare(file, 512);
+      const response = await fetch('/api/profile-avatar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          file: resizedImage,
+          filename: file.name,
+          oldPath: user?.avatarPath || null,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Nao foi possivel enviar a foto.');
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: {
+          avatar_url: data.url,
+          avatar_path: data.path,
+        },
+      });
+
+      if (updateError) throw updateError;
+      toast.success('Foto de perfil atualizada.', { style: toastStyle });
+    } catch (uploadError) {
+      console.error('[MinhaContaPage] avatar upload error:', uploadError);
+      toast.error(uploadError.message || 'Falha ao atualizar foto de perfil.', { style: toastStyle });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   return (
     <section className="pt-24 pb-16 lg:pt-28 lg:pb-24 bg-baby-cream min-h-screen">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
@@ -62,11 +152,33 @@ export default function MinhaContaPage() {
           <section className="bg-surface rounded-3xl shadow-soft p-6 sm:p-8">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div className="flex items-center gap-4">
-                <AccountAvatar size="xl" alt={`Foto de perfil padrão de ${user?.name || 'Cliente'}`} />
+                <div className="relative shrink-0">
+                  <AccountAvatar
+                    size="xl"
+                    src={user?.avatarUrl}
+                    alt={`Foto de perfil de ${user?.name || 'Cliente'}`}
+                  />
+                  <label
+                    className={`absolute -bottom-1 -right-1 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-baby-text text-white shadow-soft transition-colors hover:bg-baby-text/85 ${focusRing}`}
+                    aria-label="Trocar foto de perfil"
+                  >
+                    {uploadingAvatar ? <FiLoader size={15} className="animate-spin" /> : <FiCamera size={15} />}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleAvatarChange}
+                      disabled={uploadingAvatar}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
                 <div>
                   <h1 className="font-serif text-3xl text-baby-text">Minha Conta</h1>
                   <p className="font-sans text-sm text-baby-text/55 mt-1">{user?.name || 'Cliente'}</p>
                   <p className="font-sans text-sm text-baby-text/45">{user?.email || '—'}</p>
+                  <p className="font-sans text-xs text-baby-text/40 mt-2">
+                    Clique no ícone da câmera para trocar sua foto.
+                  </p>
                 </div>
               </div>
 

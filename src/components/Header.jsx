@@ -186,7 +186,7 @@ export default function Header() {
                   aria-expanded={isAuthed ? isAccountOpen : undefined}
                   aria-haspopup={isAuthed ? 'menu' : undefined}
                 >
-                  {isAuthed ? <AccountAvatar size="sm" /> : <FiUser size={20} />}
+                  {isAuthed ? <AccountAvatar size="sm" src={authUser?.avatarUrl} /> : <FiUser size={20} />}
                 </button>
 
                 {/* Subtle role badge next to account icon (manager/debug only) */}
@@ -431,7 +431,7 @@ export default function Header() {
                     <>
                       {/* Greeting + role */}
                       <div className="flex items-center gap-2 px-4 py-2 mb-1">
-                        <AccountAvatar size="sm" className="shrink-0" />
+                        <AccountAvatar size="sm" src={authUser?.avatarUrl} className="shrink-0" />
                         <span className="font-sans text-sm font-medium text-baby-text truncate">
                           Olá, {authUser?.name ?? 'Usuário'}
                         </span>

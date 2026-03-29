@@ -142,6 +142,8 @@ export function AuthProvider({ children }) {
       id: user.id,
       name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '',
       email: user.email || '',
+      avatarUrl: user.user_metadata?.avatar_url || '',
+      avatarPath: user.user_metadata?.avatar_path || '',
       role: profile?.role || 'customer',
     };
   }, [user, profile]);
