@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiCreditCard, FiLogOut, FiPackage, FiRefreshCw, FiUser } from 'react-icons/fi';
+import { FiCreditCard, FiLogOut, FiPackage, FiRefreshCw } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { btnPrimary, btnSecondary, focusRing, formatPrice } from '../lib/ui';
 import { getPaymentStatus, getFulfillmentStatus } from '../lib/orderStatus';
+import AccountAvatar from '../components/AccountAvatar';
 
 export default function MinhaContaPage() {
   const navigate = useNavigate();
@@ -61,9 +62,7 @@ export default function MinhaContaPage() {
           <section className="bg-surface rounded-3xl shadow-soft p-6 sm:p-8">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-baby-pink/40 flex items-center justify-center">
-                  <FiUser size={24} className="text-baby-accent" />
-                </div>
+                <AccountAvatar size="xl" alt={`Foto de perfil padrão de ${user?.name || 'Cliente'}`} />
                 <div>
                   <h1 className="font-serif text-3xl text-baby-text">Minha Conta</h1>
                   <p className="font-sans text-sm text-baby-text/55 mt-1">{user?.name || 'Cliente'}</p>

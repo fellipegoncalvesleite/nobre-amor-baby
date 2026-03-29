@@ -18,6 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { btnIcon, focusRing } from '../lib/ui';
 import SearchModal from './SearchModal';
 import DarkModeToggle from './DarkModeToggle';
+import AccountAvatar from './AccountAvatar';
 
 const navLinks = [
   { name: 'Início', to: '/', end: true },
@@ -179,12 +180,13 @@ export default function Header() {
                     setIsAccountOpen((o) => !o);
                   }}
                   className={`${btnIcon} text-baby-text/80 hover:text-baby-text hover:bg-baby-pink/50
+                              ${isAuthed ? 'p-1.5' : ''}
                               ${isAccountOpen ? 'bg-baby-pink/40' : ''}`}
                   aria-label={isAuthed ? `Conta de ${authUser?.name ?? 'usuário'}` : 'Entrar na conta'}
                   aria-expanded={isAuthed ? isAccountOpen : undefined}
                   aria-haspopup={isAuthed ? 'menu' : undefined}
                 >
-                  <FiUser size={20} />
+                  {isAuthed ? <AccountAvatar size="sm" /> : <FiUser size={20} />}
                 </button>
 
                 {/* Subtle role badge next to account icon (manager/debug only) */}
@@ -429,7 +431,7 @@ export default function Header() {
                     <>
                       {/* Greeting + role */}
                       <div className="flex items-center gap-2 px-4 py-2 mb-1">
-                        <FiUser size={18} className="text-baby-text/60 shrink-0" aria-hidden="true" />
+                        <AccountAvatar size="sm" className="shrink-0" />
                         <span className="font-sans text-sm font-medium text-baby-text truncate">
                           Olá, {authUser?.name ?? 'Usuário'}
                         </span>
