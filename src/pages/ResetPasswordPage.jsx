@@ -9,7 +9,7 @@
  * the reset email link, so we detect that via onAuthStateChange('PASSWORD_RECOVERY').
  */
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiMail, FiLock, FiLoader, FiCheck } from 'react-icons/fi';
 import toast from 'react-hot-toast';
@@ -27,6 +27,7 @@ const inputCls = `w-full px-4 py-3 rounded-xl border border-baby-text/15 bg-surf
 export default function ResetPasswordPage() {
   const { resetPassword, updatePassword } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [mode, setMode] = useState('request'); // 'request' | 'update' | 'sent' | 'done'
   const [email, setEmail] = useState('');
@@ -34,7 +35,7 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Detect recovery session from Supabase redirect
+  // Detect recovery session from Supabase redirect (implicit flow fallback)
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
@@ -43,6 +44,19 @@ export default function ResetPasswordPage() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Handle PKCE code exchange from password reset redirect
+  useEffect(() => {
+    const code = searchParams.get('code');
+    if (!code) return;
+    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+      if (error) {
+        toast.error('Link expirado ou inválido. Solicite um novo.', { style: toastStyle });
+      } else {
+        setMode('update');
+      }
+    });
+  }, [searchParams]);
 
   /* ── Request reset email ───────────────────────── */
   const handleRequest = async (e) => {

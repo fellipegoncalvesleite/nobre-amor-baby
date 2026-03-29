@@ -1,7 +1,7 @@
 /**
  * Return-path management for auth flows.
  *
- * Stores the intended return path in sessionStorage before auth redirects
+ * Stores the intended return path in localStorage before auth redirects
  * (email confirmation, OAuth) so the callback page can redirect back.
  */
 
@@ -26,13 +26,13 @@ export function isValidReturnPath(path) {
 /** Save the return path for post-auth redirect. */
 export function saveReturnPath(path) {
   if (!isValidReturnPath(path)) return;
-  try { sessionStorage.setItem(RETURN_PATH_KEY, path); } catch { /* ok */ }
+  try { localStorage.setItem(RETURN_PATH_KEY, path); } catch { /* ok */ }
 }
 
 /** Get the saved return path (defaults to '/'). */
 export function getReturnPath() {
   try {
-    const saved = sessionStorage.getItem(RETURN_PATH_KEY);
+    const saved = localStorage.getItem(RETURN_PATH_KEY);
     return isValidReturnPath(saved) ? saved : '/';
   } catch {
     return '/';
@@ -41,5 +41,5 @@ export function getReturnPath() {
 
 /** Clear the saved return path after use. */
 export function clearReturnPath() {
-  try { sessionStorage.removeItem(RETURN_PATH_KEY); } catch { /* ok */ }
+  try { localStorage.removeItem(RETURN_PATH_KEY); } catch { /* ok */ }
 }
