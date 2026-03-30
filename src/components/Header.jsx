@@ -113,16 +113,12 @@ export default function Header() {
             </button>
 
             {/* Logo */}
-            <Link
-              to="/"
-              onClick={closeMobile}
-              className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-baby-accent rounded-lg"
-              aria-label="Nobre Amor Baby — Início"
-            >
+            <div className="flex items-center gap-2 rounded-lg select-none">
               <img
                 src="/logo.svg"
-                alt=""
-                className="h-11 w-11 md:h-14 md:w-14 object-contain"
+                alt="Nobre Amor Baby"
+                className="h-12 w-12 md:h-[3.5rem] md:w-[3.5rem] object-contain"
+                draggable={false}
                 onError={(e) => {
                   e.target.style.display = 'none';
                   if (e.target.nextSibling) e.target.nextSibling.style.display = 'block';
@@ -134,8 +130,7 @@ export default function Header() {
               >
                 Nobre Amor Baby
               </span>
-              <span className="sr-only">Nobre Amor Baby</span>
-            </Link>
+            </div>
 
             {/* Desktop nav */}
             <nav

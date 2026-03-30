@@ -113,13 +113,14 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 lg:gap-12">
           <div className="col-span-2 lg:col-span-1">
-            <Link to="/" className="inline-block mb-4 focus:outline-none focus:ring-2 focus:ring-baby-pink rounded">
+            <div className="inline-block mb-4 select-none">
               <img
                 src="/logo.svg"
                 alt="Nobre Amor Baby"
-                className="h-12 w-12 brightness-0 invert opacity-90 object-contain"
+                className="h-16 w-16 sm:h-[4.5rem] sm:w-[4.5rem] object-contain"
+                draggable={false}
               />
-            </Link>
+            </div>
             <p className="font-sans text-white/70 text-sm mb-6 max-w-xs">
               Vestindo seus pequenos com amor desde 2020. Roupas de bebê premium com um toque delicado.
             </p>
