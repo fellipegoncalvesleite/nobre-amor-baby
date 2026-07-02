@@ -1,37 +1,34 @@
-## Nobre Amor Baby
+# Nobre Amor Baby
 
-E-commerce de moda infantil desenvolvido com React e Vite, com catálogo público, autenticação de clientes, painel administrativo, checkout integrado ao Asaas e cálculo de frete via Melhor Envio.
+Loja online de moda infantil feita com React e Vite. O projeto tem vitrine pública, conta de cliente, carrinho, checkout, painel administrativo e integração com serviços brasileiros de pagamento e frete.
 
-## O que o projeto inclui
+## O Que Tem
 
-- Catálogo público de produtos e coleções
-- Autenticação e área da cliente
-- Painel administrativo para pedidos e catálogo
-- Checkout com Pix e cartão via Asaas
-- Cálculo de frete com Melhor Envio
-- Backend serverless integrado ao Supabase
+1. Catálogo público com produtos, coleções, busca, favoritos e carrinho.
+2. Conta de cliente com login, cadastro, recuperação de senha e histórico de pedidos.
+3. Checkout com Pix e cartão usando Asaas.
+4. Cálculo de frete usando Melhor Envio.
+5. Painel administrativo para produtos, coleções, tamanhos, pedidos e conteúdo da página inicial.
+6. Banco de dados e autenticação no Supabase.
+7. Publicação preparada para Vercel.
 
-## Stack
+## Tecnologias
 
-- React 19
-- Vite
-- React Router
-- Tailwind CSS
-- Framer Motion
-- Supabase
-- Asaas
-- Melhor Envio
-- Vercel
+1. React 19
+2. Vite
+3. React Router
+4. Tailwind CSS
+5. Framer Motion
+6. Supabase
+7. Asaas
+8. Melhor Envio
+9. Vercel
 
-## Requisitos
+## Antes De Rodar
 
-- Node.js 20+
-- npm 10+
-- Projeto Supabase configurado
-- Conta Asaas com API key
-- Token do Melhor Envio
+Você precisa ter Node.js 20 ou mais recente, npm 10 ou mais recente, um projeto Supabase configurado, uma conta Asaas com chave de API e um token do Melhor Envio.
 
-## Configuração
+## Configuração Local
 
 ```env
 VITE_SUPABASE_URL=
@@ -46,7 +43,7 @@ SITE_URL=
 ADMIN_API_KEY=
 ```
 
-Copie o exemplo de variáveis e preencha os valores do projeto:
+Copie o arquivo de exemplo, preencha os valores e instale as dependências:
 
 ```bash
 cp .env.example .env
@@ -56,16 +53,18 @@ npm run dev
 
 ## Scripts
 
+Use estes comandos no terminal dentro da pasta do projeto:
+
 ```bash
 npm run lint
 npm run build
 npm run preview
 ```
 
-## Banco de dados
+## Banco De Dados
 
 As migrations do Supabase ficam em `supabase/`. Execute os arquivos na ordem numérica antes de usar o painel administrativo ou o checkout.
 
 ## Deploy
 
-O projeto está preparado para Vercel. Configure as mesmas variáveis de ambiente no painel do projeto antes de publicar.
+O projeto está preparado para Vercel. Configure no painel da Vercel as mesmas variáveis usadas no arquivo `.env`.

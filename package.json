@@ -1,5 +1,6 @@
 {
   "name": "nobreamorsite",
+  "description": "Online store for Nobre Amor Baby with catalog, checkout, shipping, customer accounts, and admin tools.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
