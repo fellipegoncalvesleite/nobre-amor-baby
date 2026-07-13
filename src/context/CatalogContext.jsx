@@ -31,6 +31,7 @@ import {
 } from '../lib/adminApi';
 import { useAuth } from './AuthContext';
 import { DEFAULT_SIZE_GROUPS, DEFAULT_SIZE_PRESETS } from '../utils/sizes';
+import { resolveProductImages } from '../data/catalogProductImages';
 
 /* ── Product normalisation ────────────────────────────── */
 
@@ -58,7 +59,10 @@ function normalizeProduct(p, collections) {
   const oldPrice = oldPriceCents && oldPriceCents > priceCents ? oldPriceCents / 100 : null;
 
   const rawImg = p.image_urls || (Array.isArray(p.images) ? p.images : []);
-  const images = rawImg.map((i) => (typeof i === 'string' ? i : i?.src || ''));
+  const images = resolveProductImages(
+    p.slug || '',
+    rawImg.map((i) => (typeof i === 'string' ? i : i?.src || '')),
+  );
 
   const rawSizeOpts = p.size_options || p.sizeOptions || [];
   const sizeOptions = rawSizeOpts.map((opt) => {
