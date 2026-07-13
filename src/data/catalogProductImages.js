@@ -1,3 +1,5 @@
+import { isPlaceholderImage } from '../utils/imagePlaceholders.js';
+
 /**
  * Curated catalog photos used only while a product still points at a known
  * placeholder service. Real images uploaded through the admin always win.
@@ -18,18 +20,6 @@ const CATALOG_PRODUCT_IMAGES = {
   'macacao-pijama-com-pe': '/products/macacao-pijama-com-pe.webp',
   'body-regata-safari': '/products/body-regata-safari.webp',
 };
-
-const PLACEHOLDER_HOSTS = new Set(['picsum.photos', 'placehold.co']);
-
-function isPlaceholderImage(url) {
-  if (!url) return true;
-
-  try {
-    return PLACEHOLDER_HOSTS.has(new URL(url, window.location.origin).hostname);
-  } catch {
-    return false;
-  }
-}
 
 export function resolveProductImages(slug, images) {
   const normalizedImages = images.filter(Boolean);

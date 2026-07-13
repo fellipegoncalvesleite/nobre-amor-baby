@@ -32,6 +32,7 @@ import {
 import { useAuth } from './AuthContext';
 import { DEFAULT_SIZE_GROUPS, DEFAULT_SIZE_PRESETS } from '../utils/sizes';
 import { resolveProductImages } from '../data/catalogProductImages';
+import { resolveCollectionImage } from '../data/catalogCollectionImages';
 
 /* ── Product normalisation ────────────────────────────── */
 
@@ -120,16 +121,18 @@ function normalizeProduct(p, collections) {
 /* ── Collection normalisation ─────────────────────────── */
 
 function normalizeCollection(c) {
+  const image = resolveCollectionImage(c.slug || '', c.image || c.image_url || '');
+
   return {
     ...c,
     name: c.name || '',
     slug: c.slug || '',
     description: c.description || '',
     is_active: c.is_active !== false,
-    image_url: c.image_url || c.image || '',
+    image_url: image,
     /* compat for Categories/ColecoesPage */
     label: c.label || c.name || '',
-    image: c.image || c.image_url || '',
+    image,
   };
 }
 
