@@ -119,14 +119,14 @@ export default function Header() {
             <Link
               to="/"
               className="flex items-center h-full rounded-lg select-none group focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-accent"
-              aria-label="Nobre Amor Baby — página inicial"
+              aria-label="Pequeno Encanto — página inicial"
             >
               <span
                 aria-hidden="true"
                 className="block h-20 md:h-32 aspect-[860/680] bg-[#624C73] mt-[2px] md:mt-[4px] transition-transform group-hover:scale-[1.03]"
                 style={{
-                  WebkitMaskImage: 'url(/logo.svg)',
-                  maskImage: 'url(/logo.svg)',
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
                   WebkitMaskSize: 'contain',
                   maskSize: 'contain',
                   WebkitMaskRepeat: 'no-repeat',

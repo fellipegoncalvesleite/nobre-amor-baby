@@ -166,7 +166,7 @@ export default function Hero() {
                     <motion.img
                       key={current.images[0]}
                       src={current.images[0]}
-                      alt={current.name ? `Produto ${current.name}` : 'Produto Nobre Amor Baby'}
+                      alt={current.name ? `Produto ${current.name}` : 'Produto Pequeno Encanto'}
                       className="absolute inset-0 w-full h-full object-cover"
                       loading="eager"
                       initial={{ opacity: 0, scale: 1.03 }}

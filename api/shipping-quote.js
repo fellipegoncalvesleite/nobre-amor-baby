@@ -153,7 +153,7 @@ export default async function handler(req, res) {
           Accept: 'application/json',
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-          'User-Agent': 'NobreAmorBaby/1.0',
+          'User-Agent': 'PequenoEncanto/1.0',
         },
         body: JSON.stringify(meBody),
       },

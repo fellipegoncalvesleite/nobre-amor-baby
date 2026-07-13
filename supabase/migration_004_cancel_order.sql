@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — Add cancel + reject support to orders
+-- Pequeno Encanto — Add cancel + reject support to orders
 -- Run this in the Supabase SQL Editor.
 -- ============================================================
 

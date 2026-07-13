@@ -1,4 +1,4 @@
-# Nobre Amor Baby
+# Pequeno Encanto
 
 Loja online de moda infantil feita com React e Vite. O projeto tem vitrine pública, conta de cliente, carrinho, checkout, painel administrativo e integração com serviços brasileiros de pagamento e frete.
 

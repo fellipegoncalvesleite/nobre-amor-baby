@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — customer CPF/CNPJ on orders
+-- Pequeno Encanto — customer CPF/CNPJ on orders
 -- ============================================================
 
 alter table orders

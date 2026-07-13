@@ -1,49 +1,50 @@
 /**
  * Site-wide configuration.
- * Valores de contato, endereço e regras de frete da Nobre Amor Baby.
+ * Valores de contato, endereço e regras de frete da Pequeno Encanto.
+ * Preencha com os dados da sua loja antes de publicar.
  */
 const siteConfig = {
-  brandName: 'Nobre Amor Baby',
+  brandName: 'Pequeno Encanto',
 
   /** Slogan curto exibido no footer e outras áreas de branding. */
   tagline: 'Roupas que tornam momentos ainda mais especiais.',
 
   /** Data de fundação (dd/mm/aaaa). */
-  foundedAt: '07/05/2023',
+  foundedAt: '',
 
   /** URL externa da loja (se houver). */
   storeUrl: '',
 
   /** WhatsApp com código do país e DDD (somente dígitos). */
-  whatsappNumber: '5537999622045',
+  whatsappNumber: '',
 
   /** Número formatado para exibição. */
-  whatsappDisplay: '(37) 99962-2045',
+  whatsappDisplay: '',
 
   /** E-mail de contato. */
-  contactEmail: 'nobreamorbaby@gmail.com',
+  contactEmail: '',
 
   /** Instagram. */
-  instagramUrl: 'https://instagram.com/nobreamorbaby',
-  instagramHandle: '@nobreamorbaby',
+  instagramUrl: '',
+  instagramHandle: '',
 
   /** Facebook. */
-  facebookUrl: 'https://www.facebook.com/nobreamorbaby',
+  facebookUrl: '',
 
   /** Twitter / X (vazio — não utilizado). */
   twitterUrl: '',
 
   /* ── Loja física ──────────────────────────────────── */
 
-  storeAddressLine: 'Rua Cabo Maurício dos Santos, 102 — Serra Verde',
-  storeCityState: 'Divinópolis, MG — CEP 35502-825',
-  storeCep: '35502825',
-  pickupAvailable: true,
+  storeAddressLine: '',
+  storeCityState: '',
+  storeCep: '',
+  pickupAvailable: false,
 
   /* ── Regras de frete (uso interno) ───────────────── */
 
-  STORE_CITY: 'Divinópolis',
-  STORE_UF: 'MG',
+  STORE_CITY: '',
+  STORE_UF: '',
   LOCAL_FIXED_SHIPPING_CENTS: 1000,
   NONLOCAL_SURCHARGE_CENTS: 500,
   LOCAL_ETA_TEXT: 'Entrega local (1–2 dias úteis)',

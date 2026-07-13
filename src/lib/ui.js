@@ -75,7 +75,7 @@ export const card = `
  */
 export function buildOrderText(order) {
   const lines = [
-    `Pedido — Nobre Amor Baby`,
+    `Pedido — Pequeno Encanto`,
     ``,
     ...order.items.map(
       (i) =>

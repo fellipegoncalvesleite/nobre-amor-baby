@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — enable Row Level Security on all data tables
+-- Pequeno Encanto — enable Row Level Security on all data tables
 -- Run this in the Supabase SQL Editor after migration_010.
 --
 -- WHY: the browser ships the anon key (needed for Supabase Auth). If RLS is

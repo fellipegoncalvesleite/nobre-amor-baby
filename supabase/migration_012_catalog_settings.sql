@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — manager-editable catalog config (size groups + presets)
+-- Pequeno Encanto — manager-editable catalog config (size groups + presets)
 -- Run in the Supabase SQL Editor after migration_011.
 --
 -- Single row keyed 'catalog'. Lets the manager edit the size groups

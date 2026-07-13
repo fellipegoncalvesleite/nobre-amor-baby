@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — Migration 002: Order status actions
+-- Pequeno Encanto — Migration 002: Order status actions
 -- Adds rejected_reason, confirmed_at, rejected_at, updated_at
 -- + auto-update trigger for updated_at
 -- ============================================================

@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — payments + newsletter subscribers
+-- Pequeno Encanto — payments + newsletter subscribers
 -- Run this in the Supabase SQL Editor after migrations 001-005.
 -- ============================================================
 

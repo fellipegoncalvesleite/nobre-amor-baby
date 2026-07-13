@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — grant manager role to owner email
+-- Pequeno Encanto — grant manager role to owner email
 -- Run this after migration_007 on existing databases.
 -- ============================================================
 
@@ -11,8 +11,8 @@ begin
     new.id,
     new.email,
     case
-      when lower(new.email) in ('nobreamorbaby@gmail.com', 'nobreamor@gmail.com') then 'manager'
-      when lower(new.email) = 'felipezzlx@icloud.com' then 'debug'
+      when lower(new.email) in ('admin@example.com') then 'manager'
+      when lower(new.email) = 'debug@example.com' then 'debug'
       else 'customer'
     end
   )
@@ -26,7 +26,7 @@ $$ language plpgsql security definer;
 insert into profiles (id, email, role)
 select u.id, u.email, 'manager'
 from auth.users u
-where lower(u.email) in ('nobreamorbaby@gmail.com', 'nobreamor@gmail.com')
+where lower(u.email) in ('admin@example.com')
 on conflict (id) do update
   set role = 'manager',
       email = excluded.email;

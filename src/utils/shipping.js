@@ -1,5 +1,5 @@
 /**
- * Shipping utilities — Nobre Amor Baby.
+ * Shipping utilities — Pequeno Encanto.
  *
  * Logic (internal — never shown to the customer):
  *   1. If destination is store city/UF → fixed fee (LOCAL_FIXED_SHIPPING_CENTS)

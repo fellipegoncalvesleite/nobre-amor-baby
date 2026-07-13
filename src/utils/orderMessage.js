@@ -87,7 +87,7 @@ export function buildManagerPaidMessage({ cart, products, user, shipping, paymen
   const prodMap = new Map((products || []).map((p) => [String(p.id), p]));
 
   // ── Title
-  lines.push(`Nobre Amor Baby — PEDIDO PAGO ${orderId}`);
+  lines.push(`Pequeno Encanto — PEDIDO PAGO ${orderId}`);
   lines.push('');
 
   // ── Payment confirmed

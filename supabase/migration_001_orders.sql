@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — Orders schema  (Supabase / Postgres)
+-- Pequeno Encanto — Orders schema  (Supabase / Postgres)
 -- Run this in the Supabase SQL Editor or via CLI migration.
 -- ============================================================
 

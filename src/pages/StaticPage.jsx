@@ -9,7 +9,7 @@ const pages = {
     title: 'Sobre a Loja',
     content: (
       <>
-        <h2>Como nasceu a Nobre Amor Baby</h2>
+        <h2>Como nasceu a Pequeno Encanto</h2>
         <p>
           A <strong>{siteConfig.brandName}</strong> nasceu da necessidade de oferecer peças de crochê
           de última hora para clientes que queriam presentear alguém especial e não encontravam
@@ -47,7 +47,7 @@ const pages = {
           <br />
           Instagram: <a href={siteConfig.instagramUrl} target="_blank" rel="noopener noreferrer"><strong>{siteConfig.instagramHandle}</strong></a>
           <br />
-          Facebook: <a href={siteConfig.facebookUrl} target="_blank" rel="noopener noreferrer"><strong>nobre amor baby</strong></a>
+          Facebook: <a href={siteConfig.facebookUrl} target="_blank" rel="noopener noreferrer"><strong>pequeno encanto</strong></a>
         </p>
         <p>
           Endereço: {siteConfig.storeAddressLine}, {siteConfig.storeCityState}.

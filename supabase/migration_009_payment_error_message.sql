@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — store payment failure diagnostics
+-- Pequeno Encanto — store payment failure diagnostics
 -- Run this after migration_008 on existing databases.
 -- ============================================================
 

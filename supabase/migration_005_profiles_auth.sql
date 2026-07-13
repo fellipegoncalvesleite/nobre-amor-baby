@@ -1,5 +1,5 @@
 -- ============================================================
--- Nobre Amor Baby — profiles table + roles
+-- Pequeno Encanto — profiles table + roles
 -- Run this in the Supabase SQL Editor.
 -- ============================================================
 
@@ -30,8 +30,8 @@ begin
     new.id,
     new.email,
     case
-      when lower(new.email) in ('nobreamorbaby@gmail.com', 'nobreamor@gmail.com') then 'manager'
-      when lower(new.email) = 'felipezzlx@icloud.com'  then 'debug'
+      when lower(new.email) in ('admin@example.com') then 'manager'
+      when lower(new.email) = 'debug@example.com'  then 'debug'
       else 'customer'
     end
   )
@@ -53,13 +53,13 @@ create trigger on_auth_user_created
 insert into profiles (id, email, role)
 select u.id, u.email, 'manager'
 from auth.users u
-where lower(u.email) in ('nobreamorbaby@gmail.com', 'nobreamor@gmail.com')
+where lower(u.email) in ('admin@example.com')
 on conflict (id) do update set role = 'manager', email = excluded.email;
 
 insert into profiles (id, email, role)
 select u.id, u.email, 'debug'
 from auth.users u
-where lower(u.email) = 'felipezzlx@icloud.com'
+where lower(u.email) = 'debug@example.com'
 on conflict (id) do update set role = 'debug', email = excluded.email;
 
 -- Enable RLS on profiles (but allow service_role full access)

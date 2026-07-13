@@ -45,7 +45,7 @@ export default function Footer() {
               transition={{ duration: 0.6 }}
               className="max-w-xl mx-auto text-center"
             >
-              <h2 className="font-serif text-2xl lg:text-3xl mb-2">Faça parte da Família Nobre Amor</h2>
+              <h2 className="font-serif text-2xl lg:text-3xl mb-2">Faça parte da Família Pequeno Encanto</h2>
               <p className="font-sans text-white/70 text-sm mb-5">
                 Acompanhe as novidades da loja no Instagram.
               </p>
@@ -71,14 +71,14 @@ export default function Footer() {
             <Link
               to="/"
               className="inline-flex items-center mb-5 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-pink rounded-2xl"
-              aria-label="Nobre Amor Baby — página inicial"
+              aria-label="Pequeno Encanto — página inicial"
             >
               <span
                 aria-hidden="true"
                 className="block h-24 sm:h-28 aspect-[860/680] bg-white"
                 style={{
-                  WebkitMaskImage: 'url(/logo.svg)',
-                  maskImage: 'url(/logo.svg)',
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
                   WebkitMaskSize: 'contain',
                   maskSize: 'contain',
                   WebkitMaskRepeat: 'no-repeat',
