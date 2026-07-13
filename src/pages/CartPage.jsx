@@ -5,6 +5,7 @@ import { useCatalog } from '../context/CatalogContext';
 import { useStore } from '../context/StoreContext';
 import { formatPrice, focusRing, btnPrimary, btnSecondary } from '../lib/ui';
 import ShippingSelector from '../components/ShippingSelector';
+import { STORE_DISABLED } from '../config/storeStatus';
 
 export default function CartPage() {
   const { products } = useCatalog();
@@ -224,14 +225,18 @@ export default function CartPage() {
 
                 <button
                   type="button"
-                  onClick={() => navigate('/checkout')}
-                  disabled={hasIssues}
-                  className={`${btnPrimary} w-full ${hasIssues ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => { if (!STORE_DISABLED) navigate('/checkout'); }}
+                  disabled={hasIssues || STORE_DISABLED}
+                  className={`${btnPrimary} w-full ${(hasIssues || STORE_DISABLED) ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <FiShoppingBag size={20} />
-                  Finalizar Pedido
+                  {STORE_DISABLED ? 'Compras indisponíveis' : 'Finalizar Pedido'}
                 </button>
-                {hasIssues && (
+                {STORE_DISABLED ? (
+                  <p className="font-sans text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
+                    Não estamos aceitando novos pedidos no momento.
+                  </p>
+                ) : hasIssues && (
                   <p className="font-sans text-xs text-amber-600 dark:text-amber-400 text-center mt-2">
                     {hasOOS ? 'Remova os itens esgotados para continuar.' : 'Ajuste as quantidades para continuar.'}
                   </p>

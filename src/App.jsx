@@ -27,6 +27,7 @@ import MinhaContaPage from './pages/MinhaContaPage';
 import CustomerOrderDetailPage from './pages/CustomerOrderDetailPage';
 import DebugPage from './pages/DebugPage';
 import StaticPage from './pages/StaticPage';
+import { STORE_DISABLED, STORE_DISABLED_MESSAGE } from './config/storeStatus';
 
 function AuthRedirectBridge() {
   const location = useLocation();
@@ -61,6 +62,15 @@ function App() {
       <ScrollToTop />
       <AuthRedirectBridge />
       <Header />
+
+      {STORE_DISABLED && (
+        <div
+          role="alert"
+          className="bg-amber-100 text-amber-900 text-center text-sm font-sans px-4 py-2.5 border-b border-amber-200"
+        >
+          {STORE_DISABLED_MESSAGE}
+        </div>
+      )}
 
       <main id="main-content" className="flex-1">
         <Routes>

@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { ensureSupabaseAuthReachable, isSupabaseConfigured } from '../lib/supabaseClient';
 import { focusRing } from '../lib/ui';
 import { saveReturnPath, clearReturnPath } from '../lib/authReturn';
+import { STORE_DISABLED } from '../config/storeStatus';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -212,6 +213,27 @@ export default function LoginPage() {
       setBusy(false);
     }
   };
+
+  // Store disabled — block login/signup entirely
+  if (STORE_DISABLED) {
+    return (
+      <section className="pt-24 pb-16 bg-baby-cream min-h-screen flex items-center">
+        <div className="max-w-md mx-auto px-4 text-center">
+          <h1 className="font-serif text-2xl text-baby-text mb-3">Login indisponível</h1>
+          <p className="font-sans text-baby-text/60 mb-6">
+            Não é possível entrar ou criar conta no momento. A loja está temporariamente indisponível.
+          </p>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-baby-accent text-white
+                       font-sans text-sm font-medium hover:bg-baby-accent/90 transition-colors"
+          >
+            Voltar ao início
+          </Link>
+        </div>
+      </section>
+    );
+  }
 
   // Loading spinner
   if (authLoading) {
