@@ -1,13 +1,5 @@
 /**
- * POST /api/orders - create a new order in Supabase + Asaas.
- *
- * Response 201:
- * {
- *   orderId,
- *   orderCode,
- *   status: "new",
- *   payment: { provider, method, state, url, copyPaste, qrCode, expiresAt, paidAt, externalId, lastEvent }
- * }
+ * POST /api/orders - authenticated, idempotent order creation in Supabase + Asaas.
  */
 import { getSupabase, verifyUser } from './_supabaseAdmin.js';
 import {
@@ -15,7 +7,10 @@ import {
   getRequestBaseUrl,
   getRequestIp,
   normalizeCpfCnpj,
+  toPaymentPayload,
 } from './_asaas.js';
+import { normalizeIdempotencyKey } from './_commerceSecurity.js';
+import { calculateAuthoritativeShipping, resolveCatalogItems } from './_serverShipping.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -40,7 +35,6 @@ async function generateUniqueOrderCode(supabase) {
       .maybeSingle();
     if (!existing) return orderCode;
   }
-
   throw new Error('Nao foi possivel gerar um codigo de pedido unico.');
 }
 
@@ -77,6 +71,32 @@ function isMissingColumnError(error, columnNames = []) {
   return columnNames.some((name) => errMsg.includes(String(name).toLowerCase()));
 }
 
+async function findIdempotentOrder(supabase, userId, idempotencyKey) {
+  return supabase
+    .from('orders')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle();
+}
+
+function retryPayload(order) {
+  return {
+    orderId: order.id,
+    orderCode: order.order_code,
+    status: order.status || 'new',
+    payment: toPaymentPayload(order),
+    idempotentReplay: true,
+  };
+}
+
+function errorBody(error, fallbackMessage) {
+  return {
+    error: error?.code || 'internal_error',
+    message: error?.message || fallbackMessage,
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -88,15 +108,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabase();
+    const { user } = await verifyUser(req);
+    if (!user) {
+      return json(res, 401, { error: 'unauthorized', message: 'Token inválido ou ausente.' });
+    }
+
+    const authoritativeEmail = String(user.email || '').trim();
+    if (!authoritativeEmail) {
+      return json(res, 401, { error: 'unauthorized', message: 'Conta autenticada sem e-mail válido.' });
+    }
+
     const body = req.body || {};
-    const { customer, address: addr, shipping, payment, items } = body;
+    const { customer, address: addr, payment, items } = body;
+    let idempotencyKey;
+    try {
+      idempotencyKey = normalizeIdempotencyKey(body.idempotencyKey);
+    } catch (error) {
+      return json(res, 400, errorBody(error, 'Idempotency key inválida.'));
+    }
+
+    const supabase = getSupabase();
+    const { data: existingOrder, error: existingErr } = await findIdempotentOrder(
+      supabase,
+      user.id,
+      idempotencyKey,
+    );
+    if (existingErr) {
+      console.error('[orders] idempotency lookup error:', existingErr);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao verificar repetição do pedido.' });
+    }
+    if (existingOrder) {
+      return json(res, 200, retryPayload(existingOrder));
+    }
 
     if (!customer?.name?.trim()) {
       return json(res, 400, { error: 'invalid_request', message: 'customer.name e obrigatorio.' });
-    }
-    if (!customer?.email?.trim()) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.email e obrigatorio.' });
     }
     if (!customer?.phone?.trim()) {
       return json(res, 400, { error: 'invalid_request', message: 'customer.phone e obrigatorio.' });
@@ -110,8 +156,9 @@ export default async function handler(req, res) {
     if (!['pix', 'cartao'].includes(payment?.method)) {
       return json(res, 400, { error: 'invalid_request', message: 'payment.method deve ser "pix" ou "cartao".' });
     }
-    if (payment?.method === 'cartao') {
-      const card = payment?.card || {};
+
+    if (payment.method === 'cartao') {
+      const card = payment.card || {};
       const number = digitsOnly(card.number);
       const ccv = digitsOnly(card.ccv);
       const month = digitsOnly(card.expiryMonth);
@@ -134,85 +181,41 @@ export default async function handler(req, res) {
       }
     }
 
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      if (!item?.productName && !item?.name) {
-        return json(res, 400, { error: 'invalid_request', message: `items[${i}].productName e obrigatorio.` });
-      }
-      if (Number(item?.qty) < 1) {
-        return json(res, 400, { error: 'invalid_request', message: `items[${i}].qty deve ser >= 1.` });
-      }
-      if (item?.unitPriceCents == null || Number(item.unitPriceCents) < 0) {
-        return json(res, 400, { error: 'invalid_request', message: `items[${i}].unitPriceCents e obrigatorio.` });
-      }
-    }
-
-    /* ── Server-side price authority ──────────────────────────────
-       Never trust client-sent prices. Resolve every line against the
-       products table; reject unknown or non-public products so a
-       tampered payload can't pay R$0,01 for a real item. */
-    const orderProductIds = [...new Set(
-      items.map((it) => String(it.productId ?? it.id ?? '').trim()).filter(Boolean),
-    )];
-
-    const { data: dbProducts, error: priceErr } = orderProductIds.length
-      ? await supabase
-          .from('products')
-          .select('id, name, price_cents, is_public')
-          .in('id', orderProductIds)
-      : { data: [], error: null };
-
-    if (priceErr) {
-      console.error('[orders] price lookup error:', priceErr);
-      return json(res, 500, { error: 'db_error', message: 'Falha ao validar os produtos do pedido.' });
-    }
-
-    const productPriceMap = new Map((dbProducts || []).map((p) => [String(p.id), p]));
-
-    const resolvedItems = [];
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      const pid = String(item.productId ?? item.id ?? '').trim();
-      const dbProduct = pid ? productPriceMap.get(pid) : null;
-
-      if (!dbProduct || dbProduct.is_public === false) {
-        return json(res, 400, {
-          error: 'invalid_product',
-          message: `O produto "${item.productName ?? item.name ?? pid}" não está mais disponível.`,
-        });
-      }
-
-      const qty = Math.max(1, Number(item.qty));
-      const unitPriceCents = Math.round(Number(dbProduct.price_cents));
-      resolvedItems.push({
-        productId: pid,
-        productName: dbProduct.name ?? item.productName ?? item.name ?? '',
-        size: item.size || '',
-        qty,
-        unitPriceCents,
-        lineTotalCents: unitPriceCents * qty,
-      });
-    }
-
-    const subtotalCents = resolvedItems.reduce((sum, it) => sum + it.lineTotalCents, 0);
-    const shippingFeeCents = Math.max(0, Math.round(Number(shipping?.feeCents) || 0));
-    const totalCents = subtotalCents + shippingFeeCents;
-
-    let userId = null;
+    let resolvedItems;
+    let subtotalCents;
     try {
-      const { user } = await verifyUser(req);
-      if (user) userId = user.id;
-    } catch {
-      userId = null;
+      ({ resolvedItems, subtotalCents } = await resolveCatalogItems({ supabase, items }));
+    } catch (error) {
+      if (Number(error?.status) >= 500) {
+        console.error('[orders] catalog authority error:', { code: error?.code, message: error?.message });
+      }
+      return json(res, Number(error?.status) || 500, errorBody(error, 'Falha ao validar os produtos do pedido.'));
     }
 
+    let authoritativeShipping;
+    try {
+      authoritativeShipping = await calculateAuthoritativeShipping({
+        toCep: addr?.cep,
+        resolvedItems,
+      });
+    } catch (error) {
+      if (Number(error?.status) >= 500) {
+        console.error('[orders] shipping authority error:', { code: error?.code, message: error?.message });
+      }
+      return json(res, Number(error?.status) || 500, errorBody(error, 'Falha ao calcular o frete do pedido.'));
+    }
+
+    const shippingFeeCents = authoritativeShipping.feeCents;
+    const totalCents = subtotalCents + shippingFeeCents;
     const orderCode = await generateUniqueOrderCode(supabase);
     const orderInsert = {
       order_code: orderCode,
       status: 'new',
+      user_id: user.id,
+      idempotency_key: idempotencyKey,
       customer_name: customer.name.trim(),
       customer_phone: customer.phone.trim(),
-      customer_email: customer.email.trim(),
+      customer_email: authoritativeEmail,
       customer_cpf_cnpj: normalizeCpfCnpj(customer.cpfCnpj),
       customer_message: customer.message?.trim() || null,
       address_cep: addr?.cep || null,
@@ -220,39 +223,31 @@ export default async function handler(req, res) {
       address_number: addr?.number || null,
       address_complement: addr?.complement || null,
       address_neighborhood: addr?.neighborhood || null,
-      address_city: addr?.city || null,
-      address_uf: addr?.uf || null,
+      address_city: authoritativeShipping.destination?.city || addr?.city || null,
+      address_uf: authoritativeShipping.destination?.uf || addr?.uf || null,
       shipping_fee_cents: shippingFeeCents,
-      shipping_eta_text: shipping?.etaText || null,
-      shipping_provider: shipping?.provider || shipping?.source || null,
+      shipping_eta_text: authoritativeShipping.etaText || null,
+      shipping_provider: authoritativeShipping.source || null,
       subtotal_cents: subtotalCents,
       total_cents: totalCents,
       payment_method: payment.method,
       payment_state: 'pending',
       payment_provider: 'asaas',
-      ...(userId ? { user_id: userId } : {}),
     };
 
     let order;
     let orderErr;
-
     ({ data: order, error: orderErr } = await supabase
       .from('orders')
       .insert(orderInsert)
       .select('*')
       .single());
 
-    if (orderErr && isMissingColumnError(orderErr, ['customer_cpf_cnpj', 'user_id'])) {
-      console.warn('[orders] optional order columns missing, retrying with core fields only:', orderErr.message);
-      const fallbackInsert = { ...orderInsert };
-      delete fallbackInsert.customer_cpf_cnpj;
-      delete fallbackInsert.user_id;
-
-      ({ data: order, error: orderErr } = await supabase
-        .from('orders')
-        .insert(fallbackInsert)
-        .select('*')
-        .single());
+    if (orderErr?.code === '23505') {
+      const { data: racedOrder, error: racedErr } = await findIdempotentOrder(supabase, user.id, idempotencyKey);
+      if (!racedErr && racedOrder) {
+        return json(res, 200, retryPayload(racedOrder));
+      }
     }
 
     if (orderErr || !order) {
@@ -277,7 +272,8 @@ export default async function handler(req, res) {
     const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
     if (itemsErr) {
       console.error('[orders] insert items error:', itemsErr);
-      await supabase.from('orders').delete().eq('id', order.id);
+      const { error: cleanupErr } = await supabase.from('orders').delete().eq('id', order.id);
+      if (cleanupErr) console.error('[orders] failed to clean up item-less order:', cleanupErr);
       return json(res, 500, {
         error: 'db_error',
         message: 'Falha ao registrar os itens do pedido.',
@@ -297,7 +293,6 @@ export default async function handler(req, res) {
       });
 
       let paymentUpdateErr;
-
       ({ error: paymentUpdateErr } = await supabase
         .from('orders')
         .update(paymentResult.orderUpdate)
@@ -307,7 +302,6 @@ export default async function handler(req, res) {
         console.warn('[orders] payment_error_message column missing, retrying payment sync without it:', paymentUpdateErr.message);
         const fallbackPaymentUpdate = { ...paymentResult.orderUpdate };
         delete fallbackPaymentUpdate.payment_error_message;
-
         ({ error: paymentUpdateErr } = await supabase
           .from('orders')
           .update(fallbackPaymentUpdate)
@@ -315,10 +309,10 @@ export default async function handler(req, res) {
       }
 
       if (paymentUpdateErr) {
-        console.error('[orders] payment sync error:', paymentUpdateErr);
+        console.error('[orders] payment sync error after external payment creation:', paymentUpdateErr);
         return json(res, 500, {
           error: 'payment_sync_error',
-          message: 'Pedido criado, mas a cobranca nao pode ser sincronizada.',
+          message: 'Pedido criado e cobrança enviada ao provedor, mas a sincronização falhou. Reenvie a mesma tentativa para recuperar o pedido sem criar outra cobrança.',
           orderId: order.id,
           orderCode: order.order_code,
         });
@@ -331,10 +325,8 @@ export default async function handler(req, res) {
         payment: paymentResult.payload,
       });
     } catch (paymentErr) {
-      console.error('[orders] payment creation error:', paymentErr);
+      console.error('[orders] payment creation error:', { code: paymentErr?.code, message: paymentErr?.message });
       const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobranca.');
-
-      let paymentFailureUpdateErr;
       const paymentFailureUpdate = {
         payment_method: payment.method,
         payment_provider: 'asaas',
@@ -343,16 +335,15 @@ export default async function handler(req, res) {
         payment_error_message: failedPayment.message,
       };
 
+      let paymentFailureUpdateErr;
       ({ error: paymentFailureUpdateErr } = await supabase
         .from('orders')
         .update(paymentFailureUpdate)
         .eq('id', order.id));
 
       if (paymentFailureUpdateErr && isMissingColumnError(paymentFailureUpdateErr, ['payment_error_message'])) {
-        console.warn('[orders] payment_error_message column missing, retrying failed-payment update without it:', paymentFailureUpdateErr.message);
         const fallbackFailureUpdate = { ...paymentFailureUpdate };
         delete fallbackFailureUpdate.payment_error_message;
-
         ({ error: paymentFailureUpdateErr } = await supabase
           .from('orders')
           .update(fallbackFailureUpdate)
@@ -361,6 +352,12 @@ export default async function handler(req, res) {
 
       if (paymentFailureUpdateErr) {
         console.error('[orders] failed payment state update error:', paymentFailureUpdateErr);
+        return json(res, 500, {
+          error: 'payment_state_sync_error',
+          message: 'Pedido criado, mas o estado da falha de cobrança não pôde ser sincronizado.',
+          orderId: order.id,
+          orderCode: order.order_code,
+        });
       }
 
       return json(res, 201, {
@@ -372,7 +369,7 @@ export default async function handler(req, res) {
       });
     }
   } catch (err) {
-    console.error('[orders] unhandled:', err);
+    console.error('[orders] unhandled:', { code: err?.code, message: err?.message });
     return json(res, 500, { error: 'internal_error', message: 'Erro interno ao criar pedido.' });
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -192,6 +192,7 @@ export default function CheckoutPage() {
     ccv: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const idempotencyKeyRef = useRef(null);
 
   useEffect(() => {
     setForm((prev) => ({
@@ -321,6 +322,12 @@ export default function CheckoutPage() {
     }
 
     const expiry = normalizeExpiry(cardForm.expiry);
+    if (!idempotencyKeyRef.current) {
+      const randomPart = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      idempotencyKeyRef.current = `checkout_${randomPart}`;
+    }
 
     setSubmitting(true);
     try {
@@ -331,6 +338,7 @@ export default function CheckoutPage() {
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
         body: JSON.stringify({
+          idempotencyKey: idempotencyKeyRef.current,
           customer: {
             name: form.name.trim(),
             phone: digitsOnly(form.phone),
@@ -339,11 +347,6 @@ export default function CheckoutPage() {
             message: form.message.trim(),
           },
           address,
-          shipping: {
-            feeCents: shipping.feeCents,
-            etaText: shipping.etaText,
-            provider: shipping.source,
-          },
           payment: {
             method: payment.method,
             ...(payment.method === 'cartao'
@@ -360,10 +363,8 @@ export default function CheckoutPage() {
           },
           items: items.map((item) => ({
             productId: item.id,
-            productName: item.product.name,
             size: item.size,
             qty: item.qty,
-            unitPriceCents: Math.round(item.product.price * 100),
           })),
         }),
       });
@@ -374,6 +375,7 @@ export default function CheckoutPage() {
       }
 
       saveOrderId(data.orderCode);
+      idempotencyKeyRef.current = null;
 
       clearCart();
       clearShipping();

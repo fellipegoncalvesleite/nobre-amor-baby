@@ -10,14 +10,12 @@ import { FiPlus, FiX, FiRefreshCw } from 'react-icons/fi';
 import Spinner from './ui/Spinner';
 import toast from 'react-hot-toast';
 import { useStore } from '../context/StoreContext';
-import { useCatalog } from '../context/CatalogContext';
 import { normalizeCep, isValidCep, calculateShipping } from '../utils/shipping';
 import { fetchCepInfo } from '../utils/viacep';
 import { formatPrice, focusRing } from '../lib/ui';
 
 export default function ShippingSelector() {
   const { shipping, setShipping, address, setAddress, cart } = useStore();
-  const { products } = useCatalog();
 
   const [showComplement, setShowComplement] = useState(!!address.complement);
   const prevCepRef = useRef(address.cep || '');
@@ -33,7 +31,7 @@ export default function ShippingSelector() {
   const runShippingCalc = useCallback(async (cep, city, uf) => {
     setShipping({ cepDigits: cep, city, uf, isLoading: true, error: '', feeCents: null, etaText: '', source: '' });
     try {
-      const result = await calculateShipping({ cep, city, uf, cart, products });
+      const result = await calculateShipping({ cep, cart });
       setShipping({
         cepDigits: cep,
         city,
@@ -56,7 +54,7 @@ export default function ShippingSelector() {
         error: err.message || 'Não foi possível calcular o frete.',
       });
     }
-  }, [setShipping, cart, products]);
+  }, [setShipping, cart]);
 
   /* ── ViaCEP auto-lookup + shipping calc ─────────── */
   const lookupCep = useCallback(async (rawCep) => {
