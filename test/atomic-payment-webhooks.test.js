@@ -565,6 +565,30 @@ test('migration preserves unprovable historical paid rows as review records inst
   assert.match(sql, /provider_reported_state\s*=\s*coalesce\(pa\.provider_reported_state,\s*'paid'\)[\s\S]*state\s*=\s*'payment_review'[\s\S]*amount_verification_state\s*=\s*'legacy_unverified'/i);
 });
 
+test('migration 017 never infers historical amount verification from orders.paid_total_cents', async () => {
+  const sql = await readFile(new URL('../supabase/migration_017_atomic_payment_webhooks.sql', import.meta.url), 'utf8');
+  const backfillStart = sql.indexOf('-- Historical paid rows predate durable provider-amount provenance.');
+  const backfillEnd = sql.indexOf('alter table public.payment_attempts\n  drop constraint if exists payment_attempts_paid_requires_verified_amount;');
+  assert.notEqual(backfillStart, -1);
+  assert.notEqual(backfillEnd, -1);
+  const historicalBackfill = sql.slice(backfillStart, backfillEnd);
+
+  assert.doesNotMatch(
+    historicalBackfill,
+    /amount_verification_state\s*=\s*'verified'/i,
+    'historical rows must not be promoted to verified before new provider evidence exists',
+  );
+  assert.doesNotMatch(
+    historicalBackfill,
+    /provider_amount_cents\s*=\s*coalesce\(pa\.provider_amount_cents,\s*o\.paid_total_cents\)/i,
+    'orders.paid_total_cents has no trustworthy provider-amount provenance for legacy rows',
+  );
+  assert.match(
+    historicalBackfill,
+    /provider_reported_state\s*=\s*coalesce\(pa\.provider_reported_state,\s*'paid'\)[\s\S]*provider_amount_cents\s*=\s*null[\s\S]*state\s*=\s*'payment_review'[\s\S]*amount_verification_state\s*=\s*'legacy_unverified'/i,
+  );
+});
+
 test('mismatched later paid event does not overwrite a previously verified ledger amount', async () => {
   const sql = await readFile(new URL('../supabase/migration_017_atomic_payment_webhooks.sql', import.meta.url), 'utf8');
   assert.match(sql, /provider_amount_cents\s*=\s*case[\s\S]*v_attempt\.state\s*=\s*'paid'[\s\S]*v_attempt\.amount_verification_state\s*=\s*'verified'[\s\S]*then\s+v_attempt\.provider_amount_cents[\s\S]*else\s+p_provider_amount_cents[\s\S]*end/i);

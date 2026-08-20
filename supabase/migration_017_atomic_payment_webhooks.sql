@@ -42,26 +42,16 @@ alter table public.payment_attempts
     )
   );
 
--- Never guess whether an already-paid historical ledger row was amount-verified.
--- Active paid ownership is verifiable only when the order's durable paid total
--- exactly equals its authoritative total. Preserve every other historical provider-
--- reported paid record for investigation, but remove it from verified-paid ownership
--- until a later provider event supplies an amount that passes validation.
+-- Historical paid rows predate durable provider-amount provenance. Older
+-- application code could populate orders.paid_total_cents from the authoritative
+-- order total when the provider amount was absent, so equality with total_cents is
+-- not proof of what Asaas reported. Preserve the historical provider-reported paid
+-- state for investigation, but require a new validated provider event before the
+-- ledger can participate in verified-paid ownership or refund fallback.
 update public.payment_attempts pa
 set
   provider_reported_state = coalesce(pa.provider_reported_state, 'paid'),
-  provider_amount_cents = coalesce(pa.provider_amount_cents, o.paid_total_cents),
-  amount_verification_state = 'verified'
-from public.orders o
-where pa.state = 'paid'
-  and o.active_payment_attempt_id = pa.id
-  and o.payment_state = 'paid'
-  and o.paid_total_cents is not null
-  and o.paid_total_cents = o.total_cents;
-
-update public.payment_attempts pa
-set
-  provider_reported_state = coalesce(pa.provider_reported_state, 'paid'),
+  provider_amount_cents = null,
   state = 'payment_review',
   amount_verification_state = 'legacy_unverified',
   updated_at = now()
