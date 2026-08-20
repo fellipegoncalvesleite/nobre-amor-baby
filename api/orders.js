@@ -11,6 +11,7 @@ import {
   toPaymentPayload,
 } from './_asaas.js';
 import { normalizeIdempotencyKey } from './_commerceSecurity.js';
+import { ensureOriginalPaymentAttempt, persistPaymentAttemptIdentity } from './_paymentLedger.js';
 import {
   addPostgresIntCents,
   calculateAuthoritativeShipping,
@@ -135,13 +136,29 @@ export async function markCheckoutReconciliationRequired(supabase, orderId) {
   return error || null;
 }
 
-async function respondToExistingCheckout({ supabase, order, res, recoverPayment }) {
+async function respondToExistingCheckout({
+  supabase,
+  order,
+  res,
+  recoverPayment,
+  ensureOriginalPayment = ensureOriginalPaymentAttempt,
+  persistPaymentIdentity = persistPaymentAttemptIdentity,
+}) {
   try {
     const resolution = await resolvePersistedCheckout({
       order,
       recoverPayment: (currentOrder) => recoverPayment({ order: currentOrder }),
       persistRecovery: async (update) => {
-        const error = await updateOrderPaymentMetadata(supabase, order.id, update);
+        const originalAttempt = await ensureOriginalPayment(supabase, order);
+        const persistedAttempt = await persistPaymentIdentity(supabase, originalAttempt, {
+          providerPaymentId: update.payment_external_id || null,
+          state: update.payment_state || originalAttempt.state,
+          lastEventId: update.payment_last_event,
+        });
+        const error = await updateOrderPaymentMetadata(supabase, order.id, {
+          ...update,
+          active_payment_attempt_id: persistedAttempt.id,
+        });
         if (error) {
           const syncError = new Error('Falha ao sincronizar a cobrança recuperada.');
           syncError.code = 'payment_reconciliation_sync_error';
@@ -212,6 +229,8 @@ export function createOrdersHandler(overrides = {}) {
     calculateAuthoritativeShipping,
     createAsaasOrderPayment,
     recoverAsaasOrderPayment,
+    ensureOriginalPaymentAttempt,
+    persistPaymentAttemptIdentity,
     ...overrides,
   };
 
@@ -261,6 +280,8 @@ export function createOrdersHandler(overrides = {}) {
         order: existingOrder,
         res,
         recoverPayment: deps.recoverAsaasOrderPayment,
+        ensureOriginalPayment: deps.ensureOriginalPaymentAttempt,
+        persistPaymentIdentity: deps.persistPaymentAttemptIdentity,
       });
     }
 
@@ -387,6 +408,8 @@ export function createOrdersHandler(overrides = {}) {
           order: racedOrder,
           res,
           recoverPayment: deps.recoverAsaasOrderPayment,
+          ensureOriginalPayment: deps.ensureOriginalPaymentAttempt,
+          persistPaymentIdentity: deps.persistPaymentAttemptIdentity,
         });
       }
     }
@@ -422,6 +445,19 @@ export function createOrdersHandler(overrides = {}) {
       });
     }
 
+    let originalPaymentAttempt;
+    try {
+      originalPaymentAttempt = await deps.ensureOriginalPaymentAttempt(supabase, order, { state: 'claimed' });
+    } catch (ledgerErr) {
+      console.error('[orders] original payment ledger claim error:', { code: ledgerErr?.code, message: ledgerErr?.message });
+      return json(res, 500, {
+        error: ledgerErr?.code || 'payment_ledger_error',
+        message: 'Falha ao registrar a identidade da cobrança antes de contatar o provedor.',
+        orderId: order.id,
+        orderCode: order.order_code,
+      });
+    }
+
     try {
       const paymentResult = await deps.createAsaasOrderPayment({
         order,
@@ -433,9 +469,29 @@ export function createOrdersHandler(overrides = {}) {
         customerDocument: normalizeCpfCnpj(customer.cpfCnpj),
       });
 
+      try {
+        originalPaymentAttempt = await deps.persistPaymentAttemptIdentity(supabase, originalPaymentAttempt, {
+          providerPaymentId: paymentResult?.payload?.externalId || paymentResult?.orderUpdate?.payment_external_id || null,
+          state: paymentResult?.payload?.state || paymentResult?.orderUpdate?.payment_state || 'pending',
+        });
+      } catch (ledgerErr) {
+        console.error('[orders] original payment ledger sync error:', { code: ledgerErr?.code, message: ledgerErr?.message });
+        const reconciliationStateErr = await markCheckoutReconciliationRequired(supabase, order.id);
+        if (reconciliationStateErr) {
+          console.error('[orders] failed to persist reconciliation-required state:', reconciliationStateErr);
+        }
+        return json(res, 500, {
+          error: ledgerErr?.code || 'payment_reconciliation_required',
+          message: 'A cobrança pode existir, mas sua identidade ainda precisa ser conciliada. Tente novamente com a mesma tentativa.',
+          orderId: order.id,
+          orderCode: order.order_code,
+        });
+      }
+
       if (paymentResult.requiresReconciliation) {
         const reconciliationUpdate = {
           ...paymentResult.orderUpdate,
+          active_payment_attempt_id: originalPaymentAttempt.id,
           checkout_finalization_state: CHECKOUT_FINALIZATION_STATE.RECONCILIATION_REQUIRED,
         };
         const reconciliationUpdateErr = await updateOrderPaymentMetadata(
@@ -460,6 +516,7 @@ export function createOrdersHandler(overrides = {}) {
 
       const finalPaymentUpdate = {
         ...paymentResult.orderUpdate,
+        active_payment_attempt_id: originalPaymentAttempt.id,
         checkout_finalization_state: CHECKOUT_FINALIZATION_STATE.FINALIZED,
       };
       const paymentUpdateErr = await updateOrderPaymentMetadata(supabase, order.id, finalPaymentUpdate);
@@ -488,6 +545,11 @@ export function createOrdersHandler(overrides = {}) {
       console.error('[orders] payment creation error:', { code: paymentErr?.code, message: paymentErr?.message });
       const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobranca.');
       if (paymentErr?.paymentOutcomeUncertain) {
+        try {
+          await deps.persistPaymentAttemptIdentity(supabase, originalPaymentAttempt, { state: 'provider_uncertain' });
+        } catch (ledgerErr) {
+          console.error('[orders] failed to mark original payment uncertain:', { code: ledgerErr?.code, message: ledgerErr?.message });
+        }
         const reconciliationStateErr = await markCheckoutReconciliationRequired(supabase, order.id);
         if (reconciliationStateErr) {
           console.error('[orders] failed to persist uncertain payment state:', reconciliationStateErr);
@@ -498,6 +560,12 @@ export function createOrdersHandler(overrides = {}) {
           orderId: order.id,
           orderCode: order.order_code,
         });
+      }
+
+      try {
+        await deps.persistPaymentAttemptIdentity(supabase, originalPaymentAttempt, { state: 'failed' });
+      } catch (ledgerErr) {
+        console.error('[orders] failed to mark original payment failed:', { code: ledgerErr?.code, message: ledgerErr?.message });
       }
 
       const paymentFailureUpdate = {

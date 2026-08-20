@@ -752,6 +752,21 @@ test('initial checkout with existing pending PIX but no artifact returns retryab
       source: 'local_fixed',
       destination: { city: 'Divinópolis', uf: 'MG' },
     }),
+    ensureOriginalPaymentAttempt: async () => ({
+      id: 'original-initial-artifact',
+      order_id: order.id,
+      attempt_key: 'original',
+      attempt_kind: 'original',
+      external_reference: order.order_code,
+      payment_method: 'pix',
+      state: 'claimed',
+      provider_payment_id: null,
+    }),
+    persistPaymentAttemptIdentity: async (_supabase, attempt, input) => ({
+      ...attempt,
+      provider_payment_id: input.providerPaymentId || attempt.provider_payment_id,
+      state: input.state || attempt.state,
+    }),
     createAsaasOrderPayment: async () => ({
       requiresReconciliation: true,
       payload: {
@@ -808,6 +823,21 @@ test('same checkout key after PIX artifact failure recovers the existing charge 
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
     findIdempotentOrder: async () => ({ data: order, error: null }),
+    ensureOriginalPaymentAttempt: async () => ({
+      id: 'original-existing-artifact',
+      order_id: order.id,
+      attempt_key: 'original',
+      attempt_kind: 'original',
+      external_reference: order.order_code,
+      payment_method: 'pix',
+      state: 'claimed',
+      provider_payment_id: null,
+    }),
+    persistPaymentAttemptIdentity: async (_supabase, attempt, input) => ({
+      ...attempt,
+      provider_payment_id: input.providerPaymentId || attempt.provider_payment_id,
+      state: input.state || attempt.state,
+    }),
     recoverAsaasOrderPayment: async () => {
       recoveryCalls += 1;
       return {
