@@ -1,3 +1,5 @@
+import { preservePaymentState } from './_commerceSecurity.js';
+
 const ASAAS_DEFAULT_API_URL = 'https://sandbox.asaas.com/api/v3';
 
 function trimToNull(value) {
@@ -67,16 +69,22 @@ export async function asaasRequest(path, options = {}) {
     });
   }
 
-  const res = await fetch(url, {
-    method: options.method || 'GET',
-    headers: {
-      accept: 'application/json',
-      access_token: apiKey,
-      ...(options.body ? { 'content-type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method: options.method || 'GET',
+      headers: {
+        accept: 'application/json',
+        access_token: apiKey,
+        ...(options.body ? { 'content-type': 'application/json' } : {}),
+        ...(options.headers || {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (error) {
+    error.asaasTransportFailure = true;
+    throw error;
+  }
 
   const text = await res.text();
   let data = null;
@@ -157,6 +165,120 @@ export function toPaymentPayload(orderLike = {}) {
     externalId: orderLike.payment_external_id || null,
     lastEvent: orderLike.payment_last_event || null,
     message: orderLike.payment_error_message || null,
+  };
+}
+
+function billingTypeToPaymentMethod(billingType, fallback = null) {
+  const normalized = String(billingType || '').toUpperCase();
+  if (normalized === 'PIX') return 'pix';
+  if (normalized === 'CREDIT_CARD') return 'cartao';
+  return fallback;
+}
+
+function toSafePaidTotalCents(order, payment, state) {
+  const existingPaidTotal = Number(order?.paid_total_cents);
+  if (Number.isSafeInteger(existingPaidTotal) && existingPaidTotal >= 0 && existingPaidTotal <= 2_147_483_647) {
+    return existingPaidTotal;
+  }
+
+  if (state !== 'paid' && state !== 'refunded') return null;
+
+  const providerValue = Number(payment?.value);
+  const providerCents = Number.isFinite(providerValue) ? Math.round(providerValue * 100) : NaN;
+  if (Number.isSafeInteger(providerCents) && providerCents >= 0 && providerCents <= 2_147_483_647) {
+    return providerCents;
+  }
+
+  const authoritativeTotal = Number(order?.total_cents);
+  if (Number.isSafeInteger(authoritativeTotal) && authoritativeTotal >= 0 && authoritativeTotal <= 2_147_483_647) {
+    return authoritativeTotal;
+  }
+
+  return null;
+}
+
+function mapRecoveredPayment(order, payment, pixQrCode = null) {
+  const method = billingTypeToPaymentMethod(payment?.billingType, order?.payment_method || null);
+  const proposedState = mapAsaasStatusToPaymentState(payment?.status);
+  const state = preservePaymentState(order?.payment_state, proposedState);
+  const copyPaste = pixQrCode?.payload || null;
+  const qrCode = pixQrCode?.encodedImage ? `data:image/png;base64,${pixQrCode.encodedImage}` : null;
+  const expiresAt = pixQrCode?.expirationDate || payment?.dueDate || null;
+  const paidAt = order?.paid_at || payment?.clientPaymentDate || payment?.paymentDate || null;
+  const paidTotalCents = toSafePaidTotalCents(order, payment, state);
+
+  return {
+    payload: {
+      provider: 'asaas',
+      method,
+      state,
+      url: payment?.invoiceUrl || null,
+      copyPaste,
+      qrCode,
+      expiresAt,
+      paidAt,
+      externalId: payment?.id || null,
+      lastEvent: 'PAYMENT_RECONCILED',
+      message: null,
+    },
+    orderUpdate: {
+      payment_method: method,
+      payment_ref: payment?.id || null,
+      payment_state: state,
+      payment_provider: 'asaas',
+      payment_external_id: payment?.id || null,
+      payment_link_url: payment?.invoiceUrl || null,
+      payment_pix_copy_paste: copyPaste,
+      payment_pix_qr_code: qrCode,
+      payment_expires_at: expiresAt,
+      paid_at: paidAt,
+      paid_total_cents: paidTotalCents,
+      payment_last_event: 'PAYMENT_RECONCILED',
+      payment_error_message: null,
+    },
+  };
+}
+
+export async function recoverAsaasOrderPayment({ order, requestImpl = asaasRequest }) {
+  const orderCode = String(order?.order_code || '').trim();
+  if (!orderCode) {
+    throw new Error('order.order_code is required for Asaas reconciliation.');
+  }
+
+  const response = await requestImpl('/payments', {
+    query: { externalReference: orderCode },
+  });
+  const matches = (Array.isArray(response?.data) ? response.data : [])
+    .filter((payment) => String(payment?.externalReference || '').trim() === orderCode);
+
+  if (matches.length === 0) return { kind: 'none' };
+  if (matches.length > 1) {
+    return {
+      kind: 'conflict',
+      paymentIds: matches.map((payment) => payment?.id).filter(Boolean),
+    };
+  }
+
+  const payment = matches[0];
+  const method = billingTypeToPaymentMethod(payment?.billingType, order?.payment_method || null);
+  let pixQrCode = null;
+  if (method === 'pix' && payment?.id) {
+    try {
+      pixQrCode = await requestImpl(`/payments/${payment.id}/pixQrCode`);
+    } catch (error) {
+      console.warn('[asaas] PIX recovery QR fetch failed:', {
+        code: error?.code,
+        status: error?.status,
+      });
+    }
+  }
+
+  const mapped = mapRecoveredPayment(order, payment, pixQrCode);
+  return {
+    kind: 'single',
+    payment,
+    pixQrCode,
+    ...mapped,
   };
 }
 
@@ -257,10 +379,18 @@ export async function createAsaasOrderPayment({
     paymentBody.remoteIp = trimToNull(requestIp) || '127.0.0.1';
   }
 
-  const payment = await asaasRequest('/payments', {
-    method: 'POST',
-    body: paymentBody,
-  });
+  let payment;
+  try {
+    payment = await asaasRequest('/payments', {
+      method: 'POST',
+      body: paymentBody,
+    });
+  } catch (error) {
+    error.paymentOutcomeUncertain = Boolean(
+      error?.asaasTransportFailure || Number(error?.status) >= 500 || Number(error?.status) === 408,
+    );
+    throw error;
+  }
 
   let pixQrCode = null;
   if (method === 'pix') {

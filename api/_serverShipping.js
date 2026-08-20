@@ -1,7 +1,9 @@
 import siteConfig from '../src/config/siteConfig.js';
 
 const PACKAGE_OVERHEAD_GRAMS = 50;
-const DEFAULT_WEIGHT_GRAMS = 200;
+export const DEFAULT_WEIGHT_GRAMS = 200;
+export const MAX_ITEM_QTY = 1000;
+export const POSTGRES_INT_MAX = 2_147_483_647;
 const DIMENSION_TIERS = [
   { maxPieces: 2, lengthCm: 25, widthCm: 20, heightCm: 4 },
   { maxPieces: 5, lengthCm: 30, widthCm: 25, heightCm: 8 },
@@ -14,6 +16,50 @@ function shippingError(code, message, status = 500) {
   error.code = code;
   error.status = status;
   return error;
+}
+
+function requireSafeInteger(value, { code = 'invalid_request', message, status = 400, min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw shippingError(code, message || 'Valor inteiro inválido.', status);
+  }
+  return value;
+}
+
+export function requirePostgresIntCents(value, label = 'valor') {
+  return requireSafeInteger(value, {
+    code: 'unsafe_monetary_value',
+    message: `${label} em centavos excede o intervalo inteiro permitido.`,
+    status: 400,
+    min: 0,
+    max: POSTGRES_INT_MAX,
+  });
+}
+
+export function addPostgresIntCents(left, right, label = 'total') {
+  requirePostgresIntCents(left, label);
+  requirePostgresIntCents(right, label);
+  const total = left + right;
+  return requirePostgresIntCents(total, label);
+}
+
+function multiplyPostgresIntCents(unitCents, qty, label = 'total da linha') {
+  requirePostgresIntCents(unitCents, label);
+  requireSafeInteger(qty, {
+    code: 'invalid_request',
+    message: 'qty deve ser um inteiro seguro.',
+    status: 400,
+    min: 1,
+    max: MAX_ITEM_QTY,
+  });
+  const total = unitCents * qty;
+  return requirePostgresIntCents(total, label);
+}
+
+function safeWeightGrams(value) {
+  const weight = Number(value);
+  return Number.isFinite(weight) && weight > 0 && Number.isSafeInteger(weight)
+    ? weight
+    : DEFAULT_WEIGHT_GRAMS;
 }
 
 export function normalizeCep(value) {
@@ -37,12 +83,27 @@ export function buildPackageFromResolvedItems(resolvedItems) {
   let insuranceValueCents = 0;
 
   for (const item of resolvedItems || []) {
-    const qty = Number(item.qty || 0);
-    const weightGrams = Number(item.weightGrams || DEFAULT_WEIGHT_GRAMS);
-    const unitPriceCents = Number(item.unitPriceCents || 0);
+    const qty = Number(item.qty);
+    requireSafeInteger(qty, {
+      code: 'invalid_request',
+      message: 'qty deve ser um inteiro seguro.',
+      status: 400,
+      min: 1,
+      max: MAX_ITEM_QTY,
+    });
+    const weightGrams = safeWeightGrams(item.weightGrams);
+    const unitPriceCents = requirePostgresIntCents(Number(item.unitPriceCents), 'preço unitário');
+    const lineWeight = weightGrams * qty;
+    if (!Number.isSafeInteger(lineWeight) || !Number.isSafeInteger(totalWeightGrams + lineWeight)) {
+      throw shippingError('unsafe_package_weight', 'Peso total do pacote excede o intervalo seguro.', 400);
+    }
     itemCount += qty;
-    totalWeightGrams += weightGrams * qty;
-    insuranceValueCents += unitPriceCents * qty;
+    totalWeightGrams += lineWeight;
+    insuranceValueCents = addPostgresIntCents(
+      insuranceValueCents,
+      multiplyPostgresIntCents(unitPriceCents, qty, 'valor segurado'),
+      'valor segurado',
+    );
   }
 
   const tier = DIMENSION_TIERS.find((candidate) => itemCount <= candidate.maxPieces) || DIMENSION_TIERS[DIMENSION_TIERS.length - 1];
@@ -68,8 +129,12 @@ export async function resolveCatalogItems({ supabase, items }) {
     if (!productId) {
       throw shippingError('invalid_request', `items[${index}].productId é obrigatório.`, 400);
     }
-    if (!Number.isInteger(qty) || qty < 1) {
-      throw shippingError('invalid_request', `items[${index}].qty deve ser um inteiro >= 1.`, 400);
+    if (!Number.isSafeInteger(qty) || qty < 1 || qty > MAX_ITEM_QTY) {
+      throw shippingError(
+        'invalid_request',
+        `items[${index}].qty deve ser um inteiro seguro entre 1 e ${MAX_ITEM_QTY}.`,
+        400,
+      );
     }
     return {
       productId,
@@ -100,22 +165,34 @@ export async function resolveCatalogItems({ supabase, items }) {
       );
     }
 
-    const unitPriceCents = Math.round(Number(product.price_cents));
-    const weightGrams = Number(product.weight_grams || DEFAULT_WEIGHT_GRAMS);
+    const unitPriceCents = Number(product.price_cents);
+    if (!Number.isSafeInteger(unitPriceCents) || unitPriceCents < 0 || unitPriceCents > POSTGRES_INT_MAX) {
+      throw shippingError(
+        'catalog_data_invalid',
+        `Preço em centavos inválido para o produto ${item.productId}.`,
+        500,
+      );
+    }
+    const weightGrams = safeWeightGrams(product.weight_grams);
     return {
       productId: item.productId,
       productName: product.name || item.clientProductName || '',
       size: item.size,
       qty: item.qty,
       unitPriceCents,
-      lineTotalCents: unitPriceCents * item.qty,
+      lineTotalCents: multiplyPostgresIntCents(unitPriceCents, item.qty, 'total da linha'),
       weightGrams,
     };
   });
 
+  const subtotalCents = resolvedItems.reduce(
+    (sum, item) => addPostgresIntCents(sum, item.lineTotalCents, 'subtotal'),
+    0,
+  );
+
   return {
     resolvedItems,
-    subtotalCents: resolvedItems.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    subtotalCents,
   };
 }
 
@@ -191,8 +268,10 @@ async function fetchMelhorEnvioQuote({ toCep, pkg, fetchImpl, melhorEnvioToken }
 
   const best = valid[0];
   const days = best.delivery_time ?? best.delivery_range?.max;
+  const rawFeeCents = Math.round(Number(best.price) * 100);
+  requirePostgresIntCents(rawFeeCents, 'frete');
   return {
-    rawFeeCents: Math.round(Number(best.price) * 100),
+    rawFeeCents,
     etaText: days ? `${days} dia${days > 1 ? 's' : ''} útei${days > 1 ? 's' : 'l'}` : siteConfig.DEFAULT_ETA_TEXT,
     carrierName: best.name || best.company?.name || null,
     carrierId: best.id || null,
@@ -233,10 +312,11 @@ export async function calculateAuthoritativeShipping({
     fetchImpl,
     melhorEnvioToken,
   });
-  const surcharge = siteConfig.NONLOCAL_SURCHARGE_CENTS;
+  const surcharge = requirePostgresIntCents(siteConfig.NONLOCAL_SURCHARGE_CENTS, 'acréscimo de frete');
+  const feeCents = addPostgresIntCents(quote.rawFeeCents, surcharge, 'frete');
 
   return {
-    feeCents: quote.rawFeeCents + surcharge,
+    feeCents,
     rawFeeCents: quote.rawFeeCents,
     surcharge,
     etaText: quote.etaText,
