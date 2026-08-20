@@ -80,7 +80,7 @@ test('webhook can find another paid attempt when the active paid attempt is refu
   const { findOtherPaidAttemptForWebhook } = await import('../api/asaas-webhook.js');
   const attempts = [
     { id: 'attempt-refunded', order_id: 'order-3', state: 'refunded', provider_payment_id: 'pay_refunded' },
-    { id: 'attempt-still-paid', order_id: 'order-3', state: 'paid', provider_payment_id: 'pay_still_paid', payment_method: 'pix' },
+    { id: 'attempt-still-paid', order_id: 'order-3', state: 'paid', amount_verification_state: 'verified', provider_payment_id: 'pay_still_paid', payment_method: 'pix' },
   ];
   const supabase = {
     from(table) {

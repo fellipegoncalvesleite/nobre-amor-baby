@@ -11,7 +11,12 @@ import {
   toPaymentPayload,
 } from './_asaas.js';
 import { normalizeIdempotencyKey } from './_commerceSecurity.js';
-import { ensureOriginalPaymentAttempt, persistPaymentAttemptIdentity } from './_paymentLedger.js';
+import {
+  derivePaymentAttemptVerification,
+  derivePaymentAttemptVerificationFromCents,
+  ensureOriginalPaymentAttempt,
+  persistPaymentAttemptIdentity,
+} from './_paymentLedger.js';
 import {
   addPostgresIntCents,
   calculateAuthoritativeShipping,
@@ -150,11 +155,24 @@ async function respondToExistingCheckout({
       recoverPayment: (currentOrder) => recoverPayment({ order: currentOrder }),
       persistRecovery: async (update) => {
         const originalAttempt = await ensureOriginalPayment(supabase, order);
+        const verification = derivePaymentAttemptVerificationFromCents(
+          update.payment_state || originalAttempt.state,
+          update.paid_total_cents,
+          order.total_cents,
+        );
         const persistedAttempt = await persistPaymentIdentity(supabase, originalAttempt, {
           providerPaymentId: update.payment_external_id || null,
-          state: update.payment_state || originalAttempt.state,
+          state: verification.state,
           lastEventId: update.payment_last_event,
+          providerReportedState: verification.providerReportedState,
+          providerAmountCents: verification.providerAmountCents,
+          amountVerificationState: verification.amountVerificationState,
         });
+        if (verification.error) {
+          const amountError = new Error('A cobrança recuperada não passou na validação autoritativa do valor.');
+          amountError.code = verification.error;
+          throw amountError;
+        }
         const error = await updateOrderPaymentMetadata(supabase, order.id, {
           ...update,
           active_payment_attempt_id: persistedAttempt.id,
@@ -470,10 +488,23 @@ export function createOrdersHandler(overrides = {}) {
       });
 
       try {
+        const verification = derivePaymentAttemptVerification(
+          paymentResult?.payload?.state || paymentResult?.orderUpdate?.payment_state || 'pending',
+          paymentResult?.payment?.value,
+          order.total_cents,
+        );
         originalPaymentAttempt = await deps.persistPaymentAttemptIdentity(supabase, originalPaymentAttempt, {
           providerPaymentId: paymentResult?.payload?.externalId || paymentResult?.orderUpdate?.payment_external_id || null,
-          state: paymentResult?.payload?.state || paymentResult?.orderUpdate?.payment_state || 'pending',
+          state: verification.state,
+          providerReportedState: verification.providerReportedState,
+          providerAmountCents: verification.providerAmountCents,
+          amountVerificationState: verification.amountVerificationState,
         });
+        if (verification.error) {
+          const amountError = new Error('A cobrança criada não passou na validação autoritativa do valor.');
+          amountError.code = verification.error;
+          throw amountError;
+        }
       } catch (ledgerErr) {
         console.error('[orders] original payment ledger sync error:', { code: ledgerErr?.code, message: ledgerErr?.message });
         const reconciliationStateErr = await markCheckoutReconciliationRequired(supabase, order.id);

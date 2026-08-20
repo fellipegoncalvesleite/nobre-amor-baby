@@ -244,6 +244,9 @@ test('original payment identity is durably persisted and provider ID conflicts a
     providerPaymentId: 'pay-original',
     state: 'paid',
     lastEventId: 'evt-paid',
+    providerReportedState: 'paid',
+    providerAmountCents: 6000,
+    amountVerificationState: 'verified',
   });
   assert.equal(original.attempt_kind, 'original');
   assert.equal(original.external_reference, 'NA-ORIGINAL');
@@ -251,7 +254,7 @@ test('original payment identity is durably persisted and provider ID conflicts a
   assert.equal(original.state, 'paid');
 
   await assert.rejects(
-    ensureOriginalPaymentAttempt(supabase, order, { providerPaymentId: 'pay-different', state: 'paid' }),
+    ensureOriginalPaymentAttempt(supabase, order, { providerPaymentId: 'pay-different', state: 'paid', providerReportedState: 'paid', providerAmountCents: 6000, amountVerificationState: 'verified' }),
     (error) => error?.code === 'payment_reference_conflict',
   );
 });
@@ -267,11 +270,11 @@ test('original and retry payments can both remain durably paid', async () => {
   const order = { id: 'order-double-paid', order_code: 'NA-DOUBLE', payment_method: 'pix', payment_state: 'paid' };
 
   const original = await ensureOriginalPaymentAttempt(supabase, order, {
-    providerPaymentId: 'pay-original', state: 'paid', lastEventId: 'evt-original',
+    providerPaymentId: 'pay-original', state: 'paid', lastEventId: 'evt-original', providerReportedState: 'paid', providerAmountCents: 6000, amountVerificationState: 'verified',
   });
   const retry = await claimRetryPaymentAttempt(supabase, order, 'retry_double_paid_0000', 'pix');
   await persistPaymentAttemptIdentity(supabase, retry, {
-    providerPaymentId: 'pay-retry', state: 'paid', lastEventId: 'evt-retry',
+    providerPaymentId: 'pay-retry', state: 'paid', lastEventId: 'evt-retry', providerReportedState: 'paid', providerAmountCents: 6000, amountVerificationState: 'verified',
   });
 
   const otherFromRetry = await findOtherPaidPaymentForOrder(supabase, order.id, retry.id);

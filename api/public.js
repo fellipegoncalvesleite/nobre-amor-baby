@@ -9,6 +9,7 @@ import { createAsaasOrderPayment, recoverAsaasOrderPayment, getRequestBaseUrl, i
 import { executePaymentRetry, normalizePaymentAttemptKey } from './_paymentRetrySafety.js';
 import {
   claimRetryPaymentAttempt as claimSerializedRetryPaymentAttempt,
+  derivePaymentAttemptVerification,
   findOpenRetryPaymentAttempt,
   persistPaymentAttemptIdentity,
 } from './_paymentLedger.js';
@@ -473,10 +474,20 @@ async function persistRetryPayment(supabase, { order, attempt, paymentResult, ac
   const providerPaymentId = paymentResult?.payload?.externalId || paymentResult?.orderUpdate?.payment_external_id || null;
   const state = paymentResult?.payload?.state || paymentResult?.orderUpdate?.payment_state || 'pending';
 
+  const verification = derivePaymentAttemptVerification(state, paymentResult?.payment?.value, order.total_cents);
   await updateRetryAttempt(supabase, attempt, {
     providerPaymentId,
-    state,
+    state: verification.state,
+    providerReportedState: verification.providerReportedState,
+    providerAmountCents: verification.providerAmountCents,
+    amountVerificationState: verification.amountVerificationState,
   });
+
+  if (verification.error) {
+    const amountError = new Error('A cobrança não passou na validação autoritativa do valor.');
+    amountError.code = verification.error;
+    throw amountError;
+  }
 
   if (!activateOrder) return;
 
@@ -648,7 +659,7 @@ async function handleRetryPayment(req, res, supabase) {
     });
   } catch (err) {
     console.error('[public/retry-payment] error:', { code: err?.code, message: err?.message });
-    const status = ['payment_attempt_method_conflict', 'payment_attempt_in_progress'].includes(err?.code) ? 409 : 500;
+    const status = ['payment_attempt_method_conflict', 'payment_attempt_in_progress', 'payment_amount_mismatch', 'payment_amount_invalid'].includes(err?.code) ? 409 : 500;
     return json(res, status, {
       error: err?.code || 'retry_failed',
       message: err?.message || 'Falha ao gerar nova cobrança.',

@@ -1,4 +1,5 @@
 import { preservePaymentState } from './_commerceSecurity.js';
+import { validatePaidPaymentAmount } from './_paymentLedger.js';
 
 const ASAAS_DEFAULT_API_URL = 'https://sandbox.asaas.com/api/v3';
 
@@ -183,15 +184,9 @@ function toSafePaidTotalCents(order, payment, state) {
 
   if (state !== 'paid' && state !== 'refunded') return null;
 
-  const providerValue = Number(payment?.value);
-  const providerCents = Number.isFinite(providerValue) ? Math.round(providerValue * 100) : NaN;
-  if (Number.isSafeInteger(providerCents) && providerCents >= 0 && providerCents <= 2_147_483_647) {
-    return providerCents;
-  }
-
-  const authoritativeTotal = Number(order?.total_cents);
-  if (Number.isSafeInteger(authoritativeTotal) && authoritativeTotal >= 0 && authoritativeTotal <= 2_147_483_647) {
-    return authoritativeTotal;
+  const amountCheck = validatePaidPaymentAmount(payment?.value, Number(order?.total_cents));
+  if (Number.isSafeInteger(amountCheck.cents) && amountCheck.cents >= 0 && amountCheck.cents <= 2_147_483_647) {
+    return amountCheck.cents;
   }
 
   return null;

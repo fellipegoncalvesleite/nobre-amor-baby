@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export const ORIGINAL_PAYMENT_ATTEMPT_KEY = 'original';
 export const OPEN_RETRY_PAYMENT_STATES = Object.freeze(['claimed', 'provider_uncertain', 'pending']);
-export const PAYMENT_ATTEMPT_SELECT = 'id, order_id, attempt_key, attempt_kind, external_reference, payment_method, state, provider, provider_payment_id, last_event_id, created_at, updated_at';
+export const PAYMENT_ATTEMPT_SELECT = 'id, order_id, attempt_key, attempt_kind, external_reference, payment_method, state, provider, provider_payment_id, provider_reported_state, provider_amount_cents, amount_verification_state, last_event_id, created_at, updated_at';
 
 function paymentReferenceConflict(message = 'O registro de pagamento já está vinculado a outro pagamento do provedor.') {
   const error = new Error(message);
@@ -99,11 +99,29 @@ export async function claimRetryPaymentAttempt(supabase, order, attemptKey, paym
   return data;
 }
 
+function assertVerifiedPaidWrite({ state, providerReportedState, providerAmountCents, amountVerificationState }) {
+  if (state !== 'paid') return;
+  if (
+    providerReportedState !== 'paid' ||
+    amountVerificationState !== 'verified' ||
+    !Number.isSafeInteger(providerAmountCents) ||
+    providerAmountCents < 0
+  ) {
+    const error = new Error('Um pagamento só pode entrar no estado paid após validação autoritativa do valor.');
+    error.code = 'unverified_paid_state';
+    throw error;
+  }
+}
+
 export async function persistPaymentAttemptIdentity(supabase, attempt, {
   providerPaymentId = null,
   state,
   lastEventId,
+  providerReportedState,
+  providerAmountCents,
+  amountVerificationState,
 } = {}) {
+  assertVerifiedPaidWrite({ state, providerReportedState, providerAmountCents, amountVerificationState });
   if (
     attempt?.provider_payment_id &&
     providerPaymentId &&
@@ -116,6 +134,9 @@ export async function persistPaymentAttemptIdentity(supabase, attempt, {
     ...(providerPaymentId ? { provider_payment_id: providerPaymentId } : {}),
     ...(state ? { state } : {}),
     ...(lastEventId !== undefined ? { last_event_id: lastEventId } : {}),
+    ...(providerReportedState !== undefined ? { provider_reported_state: providerReportedState } : {}),
+    ...(providerAmountCents !== undefined ? { provider_amount_cents: providerAmountCents } : {}),
+    ...(amountVerificationState !== undefined ? { amount_verification_state: amountVerificationState } : {}),
     updated_at: new Date().toISOString(),
   };
 
@@ -135,7 +156,11 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
   providerPaymentId = null,
   state,
   lastEventId,
+  providerReportedState,
+  providerAmountCents,
+  amountVerificationState,
 } = {}) {
+  assertVerifiedPaidWrite({ state, providerReportedState, providerAmountCents, amountVerificationState });
   const { data: existing, error: existingError } = await findAttemptByKey(
     supabase,
     order.id,
@@ -151,6 +176,9 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
       providerPaymentId,
       state,
       lastEventId,
+      providerReportedState,
+      providerAmountCents,
+      amountVerificationState,
     });
   }
 
@@ -163,6 +191,9 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
     state: state || 'claimed',
     provider: 'asaas',
     provider_payment_id: providerPaymentId || null,
+    provider_reported_state: providerReportedState || null,
+    provider_amount_cents: providerAmountCents ?? null,
+    amount_verification_state: amountVerificationState || 'not_applicable',
     last_event_id: lastEventId || null,
   };
 
@@ -183,6 +214,9 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
         providerPaymentId,
         state,
         lastEventId,
+        providerReportedState,
+        providerAmountCents,
+        amountVerificationState,
       });
     }
     if (providerPaymentId) {
@@ -207,6 +241,7 @@ export async function findOtherPaidPaymentForOrder(supabase, orderId, excludedPa
     .select(PAYMENT_ATTEMPT_SELECT)
     .eq('order_id', orderId)
     .eq('state', 'paid')
+    .eq('amount_verification_state', 'verified')
     .limit(20);
   if (error) return { payment: null, error };
   const payment = (data || []).find((candidate) => String(candidate.id) !== String(excludedPaymentRecordId)) || null;
@@ -249,6 +284,51 @@ export function isStalePaymentAttemptTransition({ proposedState, persistedState 
     persistedState &&
     String(proposedState) !== String(persistedState)
   );
+}
+
+function verificationFromCents(state, providerAmountCents, authoritativeTotalCents, invalidAmount = false) {
+  const normalizedState = String(state || 'pending').toLowerCase();
+  if (normalizedState !== 'paid') {
+    return {
+      state: normalizedState,
+      providerReportedState: normalizedState,
+      providerAmountCents: null,
+      amountVerificationState: 'not_applicable',
+      error: null,
+    };
+  }
+
+  const validCents = Number.isSafeInteger(providerAmountCents) && providerAmountCents >= 0;
+  const validTotal = Number.isSafeInteger(authoritativeTotalCents) && authoritativeTotalCents >= 0;
+  if (!invalidAmount && validCents && validTotal && providerAmountCents === authoritativeTotalCents) {
+    return {
+      state: 'paid',
+      providerReportedState: 'paid',
+      providerAmountCents,
+      amountVerificationState: 'verified',
+      error: null,
+    };
+  }
+
+  const error = invalidAmount || !validCents ? 'payment_amount_invalid' : 'payment_amount_mismatch';
+  return {
+    state: 'payment_review',
+    providerReportedState: 'paid',
+    providerAmountCents: validCents ? providerAmountCents : null,
+    amountVerificationState: error === 'payment_amount_mismatch' ? 'mismatch' : 'invalid',
+    error,
+  };
+}
+
+export function derivePaymentAttemptVerification(state, providerValue, authoritativeTotalCents) {
+  const normalizedState = String(state || 'pending').toLowerCase();
+  if (normalizedState !== 'paid') return verificationFromCents(normalizedState, null, authoritativeTotalCents);
+  const amountCheck = validatePaidPaymentAmount(providerValue, authoritativeTotalCents);
+  return verificationFromCents('paid', amountCheck.cents, authoritativeTotalCents, !amountCheck.ok && amountCheck.error === 'payment_amount_invalid');
+}
+
+export function derivePaymentAttemptVerificationFromCents(state, providerAmountCents, authoritativeTotalCents) {
+  return verificationFromCents(state, providerAmountCents, authoritativeTotalCents);
 }
 
 export function validatePaidPaymentAmount(value, authoritativeTotalCents) {
