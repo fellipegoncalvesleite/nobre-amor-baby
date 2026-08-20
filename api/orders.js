@@ -167,7 +167,7 @@ async function respondToExistingCheckout({ supabase, order, res, recoverPayment 
       });
     }
 
-    const isReconciliationPending = resolution.error === 'payment_reconciliation_pending';
+    const isReconciliationPending = ['payment_reconciliation_pending', 'payment_artifact_recovery_pending'].includes(resolution.error);
     return json(res, 409, {
       error: resolution.error,
       message: isReconciliationPending
@@ -432,6 +432,31 @@ export function createOrdersHandler(overrides = {}) {
         card: payment.method === 'cartao' ? payment.card : null,
         customerDocument: normalizeCpfCnpj(customer.cpfCnpj),
       });
+
+      if (paymentResult.requiresReconciliation) {
+        const reconciliationUpdate = {
+          ...paymentResult.orderUpdate,
+          checkout_finalization_state: CHECKOUT_FINALIZATION_STATE.RECONCILIATION_REQUIRED,
+        };
+        const reconciliationUpdateErr = await updateOrderPaymentMetadata(
+          supabase,
+          order.id,
+          reconciliationUpdate,
+        );
+        if (reconciliationUpdateErr) {
+          console.error('[orders] failed to persist unusable PIX provider identity:', reconciliationUpdateErr);
+          const reconciliationStateErr = await markCheckoutReconciliationRequired(supabase, order.id);
+          if (reconciliationStateErr) {
+            console.error('[orders] failed to persist reconciliation-required state:', reconciliationStateErr);
+          }
+        }
+        return json(res, 503, {
+          error: 'payment_artifact_recovery_pending',
+          message: 'A cobrança Pix foi criada, mas o meio de pagamento ainda não pôde ser recuperado. Tente novamente com a mesma tentativa.',
+          orderId: order.id,
+          orderCode: order.order_code,
+        });
+      }
 
       const finalPaymentUpdate = {
         ...paymentResult.orderUpdate,

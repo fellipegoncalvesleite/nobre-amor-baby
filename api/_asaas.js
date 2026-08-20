@@ -197,10 +197,12 @@ function toSafePaidTotalCents(order, payment, state) {
   return null;
 }
 
-function mapRecoveredPayment(order, payment, pixQrCode = null) {
+function mapRecoveredPayment(order, payment, pixQrCode = null, preserveOrderState = true) {
   const method = billingTypeToPaymentMethod(payment?.billingType, order?.payment_method || null);
   const proposedState = mapAsaasStatusToPaymentState(payment?.status);
-  const state = preservePaymentState(order?.payment_state, proposedState);
+  const state = preserveOrderState
+    ? preservePaymentState(order?.payment_state, proposedState)
+    : proposedState;
   const copyPaste = pixQrCode?.payload || null;
   const qrCode = pixQrCode?.encodedImage ? `data:image/png;base64,${pixQrCode.encodedImage}` : null;
   const expiresAt = pixQrCode?.expirationDate || payment?.dueDate || null;
@@ -239,17 +241,17 @@ function mapRecoveredPayment(order, payment, pixQrCode = null) {
   };
 }
 
-export async function recoverAsaasOrderPayment({ order, requestImpl = asaasRequest }) {
-  const orderCode = String(order?.order_code || '').trim();
-  if (!orderCode) {
-    throw new Error('order.order_code is required for Asaas reconciliation.');
+export async function recoverAsaasOrderPayment({ order, externalReference, preserveOrderState = true, requestImpl = asaasRequest }) {
+  const reference = String(externalReference || order?.order_code || '').trim();
+  if (!reference) {
+    throw new Error('An externalReference is required for Asaas reconciliation.');
   }
 
   const response = await requestImpl('/payments', {
-    query: { externalReference: orderCode },
+    query: { externalReference: reference, limit: 10 },
   });
   const matches = (Array.isArray(response?.data) ? response.data : [])
-    .filter((payment) => String(payment?.externalReference || '').trim() === orderCode);
+    .filter((payment) => String(payment?.externalReference || '').trim() === reference);
 
   if (matches.length === 0) return { kind: 'none' };
   if (matches.length > 1) {
@@ -273,9 +275,15 @@ export async function recoverAsaasOrderPayment({ order, requestImpl = asaasReque
     }
   }
 
-  const mapped = mapRecoveredPayment(order, payment, pixQrCode);
+  const mapped = mapRecoveredPayment(order, payment, pixQrCode, preserveOrderState);
+  const pendingPixNeedsArtifact =
+    mapped.payload.method === 'pix' &&
+    mapped.payload.state === 'pending' &&
+    !mapped.payload.copyPaste &&
+    !mapped.payload.qrCode;
+
   return {
-    kind: 'single',
+    kind: pendingPixNeedsArtifact ? 'artifact_unavailable' : 'single',
     payment,
     pixQrCode,
     ...mapped,
@@ -324,6 +332,9 @@ export async function createAsaasOrderPayment({
   requestIp,
   card,
   customerDocument,
+  externalReference,
+  requestImpl = asaasRequest,
+  createCustomerImpl = createAsaasCustomer,
 }) {
   const method = normalizePaymentMethod(paymentMethod || order.payment_method);
   const cpfCnpj = normalizeCpfCnpj(customerDocument || order.customer_cpf_cnpj);
@@ -331,7 +342,7 @@ export async function createAsaasOrderPayment({
     throw new Error('CPF ou CNPJ do cliente e obrigatorio para criar a cobranca.');
   }
 
-  const customer = await createAsaasCustomer({
+  const customer = await createCustomerImpl({
     name: order.customer_name,
     email: order.customer_email,
     phone: order.customer_phone,
@@ -350,7 +361,7 @@ export async function createAsaasOrderPayment({
     value: centsToCurrency(order.total_cents),
     dueDate: formatAsaasDate(),
     description: buildPaymentDescription(order, items),
-    externalReference: order.order_code,
+    externalReference: externalReference || order.order_code,
     ...(callback ? { callback } : {}),
   };
 
@@ -381,7 +392,7 @@ export async function createAsaasOrderPayment({
 
   let payment;
   try {
-    payment = await asaasRequest('/payments', {
+    payment = await requestImpl('/payments', {
       method: 'POST',
       body: paymentBody,
     });
@@ -395,7 +406,7 @@ export async function createAsaasOrderPayment({
   let pixQrCode = null;
   if (method === 'pix') {
     try {
-      pixQrCode = await asaasRequest(`/payments/${payment.id}/pixQrCode`);
+      pixQrCode = await requestImpl(`/payments/${payment.id}/pixQrCode`);
     } catch (err) {
       console.error('[asaas] failed to fetch pix QR code:', err);
     }
@@ -415,11 +426,18 @@ export async function createAsaasOrderPayment({
     lastEvent: 'PAYMENT_CREATED',
   };
 
+  const requiresReconciliation =
+    method === 'pix' &&
+    state === 'pending' &&
+    !payload.copyPaste &&
+    !payload.qrCode;
+
   return {
     customer,
     payment,
     pixQrCode,
     payload,
+    requiresReconciliation,
     orderUpdate: {
       payment_method: method,
       payment_ref: payment.id,

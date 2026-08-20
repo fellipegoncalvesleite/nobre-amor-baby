@@ -4,8 +4,10 @@
  * Supported resources:
  *   home, products, collections, order, cancel-order, retry-payment, profile, my-orders
  */
+import { randomUUID } from 'node:crypto';
 import { getSupabase, verifyUser } from './_supabaseAdmin.js';
-import { createAsaasOrderPayment, getRequestBaseUrl, isRetryablePaymentState, toPaymentPayload } from './_asaas.js';
+import { createAsaasOrderPayment, recoverAsaasOrderPayment, getRequestBaseUrl, isRetryablePaymentState, toPaymentPayload } from './_asaas.js';
+import { executePaymentRetry, normalizePaymentAttemptKey } from './_paymentRetrySafety.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -61,6 +63,7 @@ const OPTIONAL_ORDER_COLUMNS = [
   'rejected_reason',
   'rejected_at',
   'confirmed_at',
+  'active_payment_attempt_id',
 ];
 
 const ORDER_SELECT_REQUIRED = `
@@ -85,7 +88,7 @@ const PUBLIC_ORDER_SELECT = `
 
 const RETRY_ORDER_SELECT = `
   ${PUBLIC_ORDER_SELECT},
-  customer_cpf_cnpj
+  customer_cpf_cnpj, active_payment_attempt_id
 `;
 
 const MY_ORDERS_SELECT = `
@@ -449,14 +452,110 @@ async function handleCancelOrder(req, res, supabase) {
   });
 }
 
+async function findRetryPaymentAttempt(supabase, orderId, attemptKey) {
+  return supabase
+    .from('payment_attempts')
+    .select('*')
+    .eq('order_id', orderId)
+    .eq('attempt_key', attemptKey)
+    .maybeSingle();
+}
+
+async function claimRetryPaymentAttempt(supabase, order, attemptKey, paymentMethod) {
+  const { data: existing, error: existingErr } = await findRetryPaymentAttempt(supabase, order.id, attemptKey);
+  if (existingErr) throw existingErr;
+  if (existing) {
+    if (existing.payment_method !== paymentMethod) {
+      const error = new Error('A tentativa de pagamento já foi vinculada a outro método.');
+      error.code = 'payment_attempt_method_conflict';
+      throw error;
+    }
+    return existing;
+  }
+
+  const row = {
+    order_id: order.id,
+    attempt_key: attemptKey,
+    external_reference: `NA-RETRY-${randomUUID()}`,
+    payment_method: paymentMethod,
+    state: 'claimed',
+    provider: 'asaas',
+  };
+  const { data, error } = await supabase
+    .from('payment_attempts')
+    .insert(row)
+    .select('*')
+    .single();
+
+  if (error?.code === '23505') {
+    const raced = await findRetryPaymentAttempt(supabase, order.id, attemptKey);
+    if (raced.error) throw raced.error;
+    if (raced.data) return raced.data;
+  }
+  if (error || !data) throw error || new Error('Falha ao registrar a tentativa de pagamento.');
+  return data;
+}
+
+async function updateRetryAttempt(supabase, attemptId, update) {
+  const { error } = await supabase
+    .from('payment_attempts')
+    .update({ ...update, updated_at: new Date().toISOString() })
+    .eq('id', attemptId);
+  if (error) throw error;
+}
+
+async function persistRetryPayment(supabase, { order, attempt, paymentResult, activateOrder }) {
+  const providerPaymentId = paymentResult?.payload?.externalId || paymentResult?.orderUpdate?.payment_external_id || null;
+  const state = paymentResult?.payload?.state || paymentResult?.orderUpdate?.payment_state || 'pending';
+
+  await updateRetryAttempt(supabase, attempt.id, {
+    provider_payment_id: providerPaymentId,
+    state,
+  });
+
+  if (!activateOrder) return;
+
+  const paymentUpdate = {
+    ...(paymentResult.orderUpdate || {}),
+    active_payment_attempt_id: attempt.id,
+    payment_error_message: null,
+  };
+  let { error: updateErr } = await supabase
+    .from('orders')
+    .update(paymentUpdate)
+    .eq('id', order.id);
+
+  if (updateErr && isMissingColumnError(updateErr, ['payment_error_message'])) {
+    const fallbackUpdate = { ...paymentUpdate };
+    delete fallbackUpdate.payment_error_message;
+    ({ error: updateErr } = await supabase
+      .from('orders')
+      .update(fallbackUpdate)
+      .eq('id', order.id));
+  }
+  if (updateErr) {
+    const error = new Error('Não foi possível sincronizar a cobrança com o pedido.');
+    error.code = 'payment_retry_sync_error';
+    error.cause = updateErr;
+    throw error;
+  }
+}
+
 async function handleRetryPayment(req, res, supabase) {
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
   }
 
-  const { orderCode, method } = req.body || {};
+  const { orderCode, method, attemptKey: rawAttemptKey } = req.body || {};
   if (!orderCode || typeof orderCode !== 'string' || orderCode.length < 5) {
     return json(res, 400, { error: 'bad_request', message: 'orderCode é obrigatório.' });
+  }
+
+  let attemptKey;
+  try {
+    attemptKey = normalizePaymentAttemptKey(rawAttemptKey);
+  } catch (error) {
+    return json(res, 400, { error: error.code, message: error.message });
   }
 
   const { data: order, error: orderErr } = await selectOrderWithFallback(supabase, orderCode, RETRY_ORDER_SELECT);
@@ -471,11 +570,9 @@ async function handleRetryPayment(req, res, supabase) {
   if (order.status !== 'new') {
     return json(res, 400, { error: 'invalid_status', message: 'A cobrança só pode ser recriada para pedidos novos.' });
   }
-  if (!isRetryablePaymentState(order.payment_state)) {
-    return json(res, 400, { error: 'payment_not_retryable', message: 'Este pedido ainda não pode gerar uma nova cobrança.' });
-  }
 
-  if ((method || order.payment_method) === 'cartao') {
+  const paymentMethod = method || order.payment_method;
+  if (paymentMethod === 'cartao') {
     return json(res, 400, {
       error: 'card_retry_requires_new_checkout',
       message: 'Para tentar novamente com cartao, use "Pedir de novo" e informe o cartao novamente.',
@@ -486,6 +583,15 @@ async function handleRetryPayment(req, res, supabase) {
       error: 'missing_customer_document',
       message: 'Este pedido precisa ser refeito para informar o CPF ou CNPJ novamente.',
     });
+  }
+
+  const { data: existingAttempt, error: attemptLookupErr } = await findRetryPaymentAttempt(supabase, order.id, attemptKey);
+  if (attemptLookupErr) {
+    console.error('[public/retry-payment] attempt lookup error:', attemptLookupErr);
+    return json(res, 500, { error: 'db_error', message: 'Erro ao verificar a tentativa de cobrança.' });
+  }
+  if (!existingAttempt && !isRetryablePaymentState(order.payment_state)) {
+    return json(res, 400, { error: 'payment_not_retryable', message: 'Este pedido ainda não pode gerar uma nova cobrança.' });
   }
 
   const { data: items, error: itemsErr } = await supabase
@@ -500,78 +606,74 @@ async function handleRetryPayment(req, res, supabase) {
   }
 
   try {
-    const paymentResult = await createAsaasOrderPayment({
+    const result = await executePaymentRetry({
       order,
-      items: items || [],
-      paymentMethod: method || order.payment_method,
-      requestBaseUrl: getRequestBaseUrl(req),
+      attemptKey,
+      paymentMethod,
+      claimAttempt: async ({ attemptKey: key }) => existingAttempt || claimRetryPaymentAttempt(supabase, order, key, paymentMethod),
+      recoverPayment: async ({ attempt }) => recoverAsaasOrderPayment({
+        order,
+        externalReference: attempt.external_reference,
+        preserveOrderState: false,
+      }),
+      createPayment: async ({ externalReference }) => createAsaasOrderPayment({
+        order,
+        items: items || [],
+        paymentMethod,
+        requestBaseUrl: getRequestBaseUrl(req),
+        customerDocument: order.customer_cpf_cnpj,
+        externalReference,
+      }),
+      persistPayment: async (input) => persistRetryPayment(supabase, input),
+      markAttemptUncertain: async ({ attempt }) => updateRetryAttempt(supabase, attempt.id, {
+        state: 'provider_uncertain',
+      }),
+      markAttemptFailed: async ({ attempt }) => updateRetryAttempt(supabase, attempt.id, {
+        state: 'failed',
+      }),
     });
 
-    let updateErr;
-    const paymentUpdate = {
-      ...paymentResult.orderUpdate,
-      payment_state: paymentResult.payload.state,
-      payment_error_message: null,
-    };
-
-    ({ error: updateErr } = await supabase
-      .from('orders')
-      .update(paymentUpdate)
-      .eq('id', order.id));
-
-    if (updateErr && isMissingColumnError(updateErr, ['payment_error_message'])) {
-      const fallbackUpdate = { ...paymentUpdate };
-      delete fallbackUpdate.payment_error_message;
-
-      ({ error: updateErr } = await supabase
-        .from('orders')
-        .update(fallbackUpdate)
-        .eq('id', order.id));
+    if (result.kind === 'conflict') {
+      console.error('[public/retry-payment] provider reconciliation conflict:', {
+        orderCode: order.order_code,
+        attemptId: result.attempt?.id,
+        paymentIds: result.paymentIds,
+      });
+      return json(res, 409, {
+        error: 'payment_reconciliation_conflict',
+        message: 'Não foi possível conciliar esta tentativa de cobrança automaticamente.',
+      });
     }
 
-    if (updateErr) {
-      console.error('[public/retry-payment] update error:', updateErr);
-      return json(res, 500, { error: 'db_error', message: 'Não foi possível salvar a nova cobrança.' });
+    if (result.kind === 'retryable') {
+      return json(res, 503, {
+        error: result.error,
+        message: result.error === 'payment_artifact_recovery_pending'
+          ? 'A cobrança Pix existe, mas o meio de pagamento ainda não pôde ser recuperado. Tente novamente com a mesma tentativa.'
+          : 'Não foi possível confirmar o resultado da cobrança. Tente novamente com a mesma tentativa.',
+      });
+    }
+
+    if (result.kind === 'terminal') {
+      return json(res, 409, {
+        error: result.error,
+        message: 'Esta tentativa de cobrança já terminou. Clique novamente em “Gerar nova cobrança” para iniciar uma nova tentativa.',
+        newAttemptRequired: true,
+      });
     }
 
     return json(res, 200, {
       success: true,
       orderCode: order.order_code,
       status: order.status,
-      payment: paymentResult.payload,
+      payment: result.paymentResult.payload,
     });
   } catch (err) {
-    console.error('[public/retry-payment] create error:', err);
-
-    let retryFailureErr;
-    const retryFailureUpdate = {
-      payment_state: 'failed',
-      payment_last_event: 'PAYMENT_RETRY_FAILED',
-      payment_error_message: err.message || 'Falha ao gerar nova cobrança.',
-    };
-
-    ({ error: retryFailureErr } = await supabase
-      .from('orders')
-      .update(retryFailureUpdate)
-      .eq('id', order.id));
-
-    if (retryFailureErr && isMissingColumnError(retryFailureErr, ['payment_error_message'])) {
-      const fallbackFailureUpdate = { ...retryFailureUpdate };
-      delete fallbackFailureUpdate.payment_error_message;
-
-      ({ error: retryFailureErr } = await supabase
-        .from('orders')
-        .update(fallbackFailureUpdate)
-        .eq('id', order.id));
-    }
-
-    if (retryFailureErr) {
-      console.error('[public/retry-payment] failure update error:', retryFailureErr);
-    }
-
-    return json(res, 500, {
-      error: 'retry_failed',
-      message: err.message || 'Falha ao gerar nova cobrança.',
+    console.error('[public/retry-payment] error:', { code: err?.code, message: err?.message });
+    const status = err?.code === 'payment_attempt_method_conflict' ? 409 : 500;
+    return json(res, status, {
+      error: err?.code || 'retry_failed',
+      message: err?.message || 'Falha ao gerar nova cobrança.',
     });
   }
 }

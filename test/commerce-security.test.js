@@ -198,3 +198,27 @@ test('Asaas webhook rejects a wrong configured token before database access', as
     else process.env.ASAAS_WEBHOOK_TOKEN = previous;
   }
 });
+
+test('retry-payment authorization gate precedes payment-attempt or provider side effects', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../api/public.js', import.meta.url), 'utf8');
+  const start = source.indexOf('async function handleRetryPayment');
+  const end = source.indexOf('async function handleProfile', start);
+  const retrySource = source.slice(start, end);
+  const authIndex = retrySource.indexOf('requireOrderAccess(req, res, order)');
+  const attemptIndex = retrySource.indexOf('findRetryPaymentAttempt(supabase, order.id, attemptKey)');
+  const orchestrationIndex = retrySource.indexOf('executePaymentRetry({');
+
+  assert.ok(authIndex >= 0, 'retry-payment must authenticate/authorize the order');
+  assert.ok(attemptIndex > authIndex, 'payment attempt lookup/claim must happen only after authorization');
+  assert.ok(orchestrationIndex > authIndex, 'provider retry orchestration must happen only after authorization');
+});
+
+test('payment retry migration enforces persisted uniqueness and RLS', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const sql = await readFile(new URL('../supabase/migration_015_payment_retry_safety.sql', import.meta.url), 'utf8');
+  assert.match(sql, /unique\s*\(order_id, attempt_key\)/i);
+  assert.match(sql, /unique\s*\(external_reference\)/i);
+  assert.match(sql, /active_payment_attempt_id/i);
+  assert.match(sql, /enable row level security/i);
+});

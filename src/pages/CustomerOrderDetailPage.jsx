@@ -27,6 +27,11 @@ import {
   getPaymentStatus,
 } from '../lib/orderStatus';
 import siteConfig from '../config/siteConfig';
+import {
+  clearPaymentRetryAttemptKey,
+  getOrCreatePaymentRetryAttemptKey,
+  markPaymentRetryAttemptTerminal,
+} from '../utils/paymentRetryAttempt';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -173,16 +178,21 @@ export default function CustomerOrderDetailPage() {
     if (!order) return;
     setRetrying(true);
     try {
+      const attemptKey = getOrCreatePaymentRetryAttemptKey(order.order_code);
       const response = await fetch('/api/public?resource=retry-payment', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ orderCode: order.order_code }),
+        body: JSON.stringify({ orderCode: order.order_code, attemptKey }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Não foi possível gerar uma nova cobrança.');
+      if (!response.ok) {
+        if (data.newAttemptRequired) markPaymentRetryAttemptTerminal(order.order_code);
+        throw new Error(data.message || 'Não foi possível gerar uma nova cobrança.');
+      }
+      clearPaymentRetryAttemptKey(order.order_code);
       toast.success('Nova cobrança gerada com sucesso.', { style: toastStyle });
       await fetchOrder();
     } catch (err) {

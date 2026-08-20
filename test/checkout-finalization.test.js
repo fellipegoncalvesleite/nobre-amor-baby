@@ -200,7 +200,7 @@ test('Asaas recovery queries by authoritative externalReference and maps one PIX
 
   assert.equal(result.kind, 'single');
   assert.equal(calls[0].path, '/payments');
-  assert.deepEqual(calls[0].options.query, { externalReference: 'NA-20260820-000007' });
+  assert.deepEqual(calls[0].options.query, { externalReference: 'NA-20260820-000007', limit: 10 });
   assert.equal(result.orderUpdate.payment_external_id, 'pay_pix_1');
   assert.equal(result.orderUpdate.payment_ref, 'pay_pix_1');
   assert.equal(result.orderUpdate.payment_method, 'pix');
@@ -560,4 +560,286 @@ test('Asaas recovery preserves a stronger local payment state against stale prov
   assert.equal(result.orderUpdate.payment_state, 'paid');
   assert.equal(result.orderUpdate.paid_at, '2026-08-20T09:00:00Z');
   assert.equal(result.orderUpdate.paid_total_cents, 5000);
+});
+
+test('pending PIX recovery without copy-paste or QR stays reconciliation-required', async () => {
+  const { recoverAsaasOrderPayment } = await load('../api/_asaas.js', 'Asaas recovery');
+  const calls = [];
+  const result = await recoverAsaasOrderPayment({
+    order: {
+      order_code: 'NA-20260820-200001',
+      payment_method: 'pix',
+      payment_state: 'pending',
+    },
+    requestImpl: async (path, options = {}) => {
+      calls.push({ path, options });
+      if (path === '/payments') {
+        return {
+          data: [{
+            id: 'pay_missing_artifact',
+            externalReference: 'NA-20260820-200001',
+            billingType: 'PIX',
+            status: 'PENDING',
+            invoiceUrl: 'https://example.test/pay_missing_artifact',
+          }],
+        };
+      }
+      if (path === '/payments/pay_missing_artifact/pixQrCode') {
+        const error = new Error('QR unavailable');
+        error.code = 'asaas_request_failed';
+        throw error;
+      }
+      throw new Error(`unexpected path ${path}`);
+    },
+  });
+
+  assert.equal(result.kind, 'artifact_unavailable');
+  assert.equal(result.orderUpdate.payment_external_id, 'pay_missing_artifact');
+  assert.deepEqual(calls[0].options.query, {
+    externalReference: 'NA-20260820-200001',
+    limit: 10,
+  });
+});
+
+test('artifact-unavailable recovery persists reconciliation state without finalizing', async () => {
+  const { resolvePersistedCheckout } = await load('../api/_checkoutFinalization.js', 'checkout finalization');
+  const persisted = [];
+  const result = await resolvePersistedCheckout({
+    order: {
+      id: 'order-artifact',
+      order_code: 'NA-20260820-200002',
+      checkout_finalization_state: 'reconciliation_required',
+    },
+    recoverPayment: async () => ({
+      kind: 'artifact_unavailable',
+      orderUpdate: {
+        payment_external_id: 'pay_artifact',
+        payment_state: 'pending',
+        payment_method: 'pix',
+      },
+    }),
+    persistRecovery: async (update) => persisted.push(update),
+  });
+
+  assert.equal(result.kind, 'pending');
+  assert.equal(result.error, 'payment_artifact_recovery_pending');
+  assert.deepEqual(persisted, [{
+    payment_external_id: 'pay_artifact',
+    payment_state: 'pending',
+    payment_method: 'pix',
+    checkout_finalization_state: 'reconciliation_required',
+  }]);
+});
+
+test('paid PIX recovery may finalize even when QR retrieval fails', async () => {
+  const { recoverAsaasOrderPayment } = await load('../api/_asaas.js', 'Asaas recovery');
+  const result = await recoverAsaasOrderPayment({
+    order: {
+      order_code: 'NA-20260820-200003',
+      payment_method: 'pix',
+      payment_state: 'pending',
+      total_cents: 5000,
+    },
+    requestImpl: async (path) => {
+      if (path === '/payments') {
+        return {
+          data: [{
+            id: 'pay_paid_no_qr',
+            externalReference: 'NA-20260820-200003',
+            billingType: 'PIX',
+            status: 'RECEIVED',
+            value: 50,
+          }],
+        };
+      }
+      if (path === '/payments/pay_paid_no_qr/pixQrCode') throw new Error('QR unavailable');
+      throw new Error(`unexpected path ${path}`);
+    },
+  });
+
+  assert.equal(result.kind, 'single');
+  assert.equal(result.orderUpdate.payment_state, 'paid');
+});
+
+test('initial pending PIX creation with missing artifacts reports reconciliation instead of ordinary success', async () => {
+  const { createAsaasOrderPayment } = await load('../api/_asaas.js', 'Asaas creation');
+  const result = await createAsaasOrderPayment({
+    order: {
+      order_code: 'NA-20260820-200004',
+      customer_name: 'Cliente',
+      customer_email: 'cliente@example.test',
+      customer_phone: '37999999999',
+      customer_cpf_cnpj: '12345678901',
+      total_cents: 5000,
+      payment_method: 'pix',
+    },
+    items: [],
+    paymentMethod: 'pix',
+    customerDocument: '12345678901',
+    createCustomerImpl: async () => ({ id: 'cus_1' }),
+    requestImpl: async (path, options = {}) => {
+      if (path === '/payments' && options.method === 'POST') {
+        return {
+          id: 'pay_created_no_qr',
+          externalReference: 'NA-20260820-200004',
+          billingType: 'PIX',
+          status: 'PENDING',
+          invoiceUrl: 'https://example.test/pay_created_no_qr',
+        };
+      }
+      if (path === '/payments/pay_created_no_qr/pixQrCode') throw new Error('QR unavailable');
+      throw new Error(`unexpected path ${path}`);
+    },
+  });
+
+  assert.equal(result.requiresReconciliation, true);
+  assert.equal(result.payload.state, 'pending');
+  assert.equal(result.payload.externalId, 'pay_created_no_qr');
+  assert.equal(result.payload.copyPaste, null);
+  assert.equal(result.payload.qrCode, null);
+});
+
+test('initial checkout with existing pending PIX but no artifact returns retryable non-success and does not finalize', async () => {
+  const { createOrdersHandler } = await load('../api/orders.js', 'orders handler factory');
+  const updates = [];
+  const order = {
+    id: 'order-initial-artifact',
+    order_code: 'NA-20260820-300001',
+    status: 'new',
+    checkout_finalization_state: 'in_progress',
+    customer_name: 'Cliente Teste',
+    customer_email: 'cliente@example.test',
+    customer_phone: '37999999999',
+    customer_cpf_cnpj: '12345678901',
+    total_cents: 6000,
+    payment_method: 'pix',
+    payment_state: 'pending',
+  };
+  const supabase = {
+    from(table) {
+      if (table === 'orders') {
+        return {
+          insert() {
+            return { select() { return { async single() { return { data: order, error: null }; } }; } };
+          },
+          update(update) {
+            updates.push(update);
+            return { async eq() { return { error: null }; } };
+          },
+        };
+      }
+      if (table === 'order_items') {
+        return { async insert() { return { error: null }; } };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+  const handler = createOrdersHandler({
+    verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
+    getSupabase: () => supabase,
+    findIdempotentOrder: async () => ({ data: null, error: null }),
+    generateUniqueOrderCode: async () => order.order_code,
+    resolveCatalogItems: async () => ({
+      resolvedItems: [{
+        productId: 'p1', productName: 'Body', size: 'P', qty: 1,
+        unitPriceCents: 5000, lineTotalCents: 5000, weightGrams: 200,
+      }],
+      subtotalCents: 5000,
+    }),
+    calculateAuthoritativeShipping: async () => ({
+      feeCents: 1000,
+      etaText: '1 dia útil',
+      source: 'local_fixed',
+      destination: { city: 'Divinópolis', uf: 'MG' },
+    }),
+    createAsaasOrderPayment: async () => ({
+      requiresReconciliation: true,
+      payload: {
+        state: 'pending', method: 'pix', externalId: 'pay_no_artifact',
+        copyPaste: null, qrCode: null,
+      },
+      orderUpdate: {
+        payment_method: 'pix',
+        payment_state: 'pending',
+        payment_provider: 'asaas',
+        payment_external_id: 'pay_no_artifact',
+        payment_ref: 'pay_no_artifact',
+        payment_pix_copy_paste: null,
+        payment_pix_qr_code: null,
+      },
+    }),
+  });
+
+  const res = createMockResponse();
+  await handler(baseCheckoutRequest(), res);
+
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body?.error, 'payment_artifact_recovery_pending');
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].checkout_finalization_state, 'reconciliation_required');
+  assert.equal(updates[0].payment_external_id, 'pay_no_artifact');
+});
+
+test('same checkout key after PIX artifact failure recovers the existing charge and never creates another', async () => {
+  const { createOrdersHandler } = await load('../api/orders.js', 'orders handler factory');
+  let createCalls = 0;
+  let recoveryCalls = 0;
+  const updates = [];
+  const order = {
+    id: 'existing-artifact-recovery',
+    order_code: 'NA-20260820-400001',
+    checkout_finalization_state: 'reconciliation_required',
+    payment_method: 'pix',
+    payment_state: 'pending',
+    total_cents: 6000,
+  };
+  const supabase = {
+    from(table) {
+      assert.equal(table, 'orders');
+      return {
+        update(update) {
+          updates.push(update);
+          return { async eq() { return { error: null }; } };
+        },
+      };
+    },
+  };
+  const handler = createOrdersHandler({
+    verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
+    getSupabase: () => supabase,
+    findIdempotentOrder: async () => ({ data: order, error: null }),
+    recoverAsaasOrderPayment: async () => {
+      recoveryCalls += 1;
+      return {
+        kind: 'single',
+        payload: {
+          provider: 'asaas', method: 'pix', state: 'pending', externalId: 'pay_existing',
+          copyPaste: 'pix-recovered', qrCode: null,
+        },
+        orderUpdate: {
+          payment_method: 'pix',
+          payment_state: 'pending',
+          payment_provider: 'asaas',
+          payment_external_id: 'pay_existing',
+          payment_ref: 'pay_existing',
+          payment_pix_copy_paste: 'pix-recovered',
+          payment_pix_qr_code: null,
+        },
+      };
+    },
+    createAsaasOrderPayment: async () => {
+      createCalls += 1;
+      throw new Error('same checkout key must never create another payment');
+    },
+  });
+
+  const res = createMockResponse();
+  await handler(baseCheckoutRequest(), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body?.idempotentReplay, true);
+  assert.equal(res.body?.payment?.copyPaste, 'pix-recovered');
+  assert.equal(recoveryCalls, 1);
+  assert.equal(createCalls, 0);
+  assert.equal(updates[0].checkout_finalization_state, 'finalized');
 });

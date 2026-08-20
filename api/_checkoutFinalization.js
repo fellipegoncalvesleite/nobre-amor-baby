@@ -28,6 +28,18 @@ export async function resolvePersistedCheckout({ order, recoverPayment, persistR
     };
   }
 
+  if (recovery?.kind === 'artifact_unavailable') {
+    const update = {
+      ...(recovery.orderUpdate || {}),
+      checkout_finalization_state: CHECKOUT_FINALIZATION_STATE.RECONCILIATION_REQUIRED,
+    };
+    await persistRecovery(update);
+    return {
+      kind: 'pending',
+      error: 'payment_artifact_recovery_pending',
+    };
+  }
+
   if (recovery?.kind === 'conflict') {
     return {
       kind: 'conflict',
