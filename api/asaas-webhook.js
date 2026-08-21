@@ -5,6 +5,7 @@ import {
   ensureOriginalPaymentAttempt,
   findOtherPaidPaymentForOrder,
 } from './_paymentLedger.js';
+import { processPaymentResolutionWebhook } from './_paymentResolution.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -202,6 +203,7 @@ function classifyAtomicError(error) {
 export function createAsaasWebhookHandler({
   getSupabaseFn = getSupabase,
   getAsaasConfigFn = getAsaasConfig,
+  processPaymentResolutionWebhookFn = processPaymentResolutionWebhook,
 } = {}) {
   return async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -329,6 +331,34 @@ export function createAsaasWebhookHandler({
           error: atomicResult.error_code || 'payment_amount_mismatch',
           message: 'O valor pago informado pelo provedor não corresponde ao total autoritativo do pedido.',
           duplicate: Boolean(atomicResult.duplicate),
+        });
+      }
+
+      // Financial event persistence is authoritative and happens first. Resolution
+      // post-processing is deliberately separate so a duplicate committed webhook
+      // can recover a previously failed closure/refund step. In particular,
+      // additional_paid delegates creation/reuse of the duplicate_paid_refund action.
+      try {
+        await processPaymentResolutionWebhookFn(supabase, {
+          order,
+          attempt,
+          event,
+          atomicResult,
+          payment,
+        });
+      } catch (resolutionError) {
+        console.error('[asaas-webhook] payment resolution post-processing error:', {
+          orderCode: order.order_code,
+          attemptId: attempt.id,
+          paymentId: payment.id || null,
+          eventId,
+          code: resolutionError?.code,
+          message: resolutionError?.message,
+          duplicate: Boolean(atomicResult.duplicate),
+        });
+        return json(res, 500, {
+          error: 'payment_resolution_processing_failed',
+          message: 'O evento financeiro foi persistido, mas a resolução associada ainda precisa ser retomada.',
         });
       }
 

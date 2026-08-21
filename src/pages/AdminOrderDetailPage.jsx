@@ -71,14 +71,14 @@ export default function AdminOrderDetailPage() {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || data.message || 'Falha ao atualizar pedido.');
-    return data.order;
+    return data;
   };
 
   const handleConfirm = async () => {
     setActionLoading(true);
     try {
-      const updated = await patchOrder({ status: 'confirmed' });
-      setOrder(updated);
+      const result = await patchOrder({ status: 'confirmed' });
+      setOrder(result.order);
       toast.success('Pedido confirmado!', { style: toastStyle });
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
@@ -94,10 +94,14 @@ export default function AdminOrderDetailPage() {
     }
     setActionLoading(true);
     try {
-      const updated = await patchOrder({ status: 'rejected', rejected_reason: rejectReason.trim() });
-      setOrder(updated);
+      const result = await patchOrder({ status: 'rejected', rejected_reason: rejectReason.trim() });
+      setOrder(result.order);
       setRejectModalOpen(false);
-      toast.success('Pedido recusado.', { style: toastStyle });
+      if (result.resolutionPending) {
+        toast('Resolução financeira iniciada. Aguardando confirmação do Asaas.', { style: toastStyle });
+      } else {
+        toast.success('Pedido recusado.', { style: toastStyle });
+      }
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -108,8 +112,8 @@ export default function AdminOrderDetailPage() {
   const handleAdvance = async (status, successMessage) => {
     setActionLoading(true);
     try {
-      const updated = await patchOrder({ status });
-      setOrder(updated);
+      const result = await patchOrder({ status });
+      setOrder(result.order);
       toast.success(successMessage, { style: toastStyle });
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
@@ -123,9 +127,13 @@ export default function AdminOrderDetailPage() {
     if (!reason) return;
     setActionLoading(true);
     try {
-      const updated = await patchOrder({ status: 'cancelled', cancel_reason: reason });
-      setOrder(updated);
-      toast.success('Pedido cancelado.', { style: toastStyle });
+      const result = await patchOrder({ status: 'cancelled', cancel_reason: reason });
+      setOrder(result.order);
+      if (result.resolutionPending) {
+        toast('Resolução financeira iniciada. Aguardando confirmação do Asaas.', { style: toastStyle });
+      } else {
+        toast.success('Pedido cancelado.', { style: toastStyle });
+      }
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -136,8 +144,8 @@ export default function AdminOrderDetailPage() {
   const handleSaveNotes = async () => {
     setNotesSaving(true);
     try {
-      const updated = await patchOrder({ manager_notes: notesText });
-      setOrder(updated);
+      const result = await patchOrder({ manager_notes: notesText });
+      setOrder(result.order);
       setNotesDirty(false);
       toast.success('Notas salvas!', { style: toastStyle });
     } catch (err) {

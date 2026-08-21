@@ -221,7 +221,11 @@ export default function CustomerOrderDetailPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Não foi possível cancelar.');
-      toast.success('Pedido cancelado com sucesso.', { style: toastStyle });
+      if (data.resolutionPending) {
+        toast('Cancelamento solicitado. Aguardando confirmação financeira.', { style: toastStyle });
+      } else {
+        toast.success('Pedido cancelado com sucesso.', { style: toastStyle });
+      }
       setCancelModalOpen(false);
       setCancelReason('');
       await fetchOrder();

@@ -73,6 +73,7 @@ function checkoutHarness({ reserveError = null, claimCreated = true } = {}) {
     },
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
     findIdempotentOrder: async () => ({ data: null, error: null }),
@@ -367,6 +368,7 @@ test('same-key unreserved checkout retries reservation and creates payment only 
     },
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
     findIdempotentOrder: async () => ({ data: order, error: null }),
@@ -455,6 +457,7 @@ test('same-key reserved checkout resumes provider creation only when no original
     },
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
     findIdempotentOrder: async () => ({ data: order, error: null }),
@@ -486,6 +489,7 @@ test('same-key reserved checkout resumes provider creation only when no original
 test('same-key released checkout is terminal and never recovers or creates payment', async () => {
   let providerCalls = 0;
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => ({}),
     findIdempotentOrder: async () => ({

@@ -277,6 +277,7 @@ test('webhook handler applies exact paid event only through the atomic RPC', asy
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
   const res = createMockResponse();
 
@@ -299,6 +300,7 @@ test('webhook amount mismatch remains a stable 409 even when the committed rejec
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
 
   const first = createMockResponse();
@@ -325,6 +327,7 @@ test('webhook DB failure is 500 and the same event reaches the RPC again on prov
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
 
   const first = createMockResponse();
@@ -346,6 +349,7 @@ test('atomic refund fallback result switches ownership without a second order mu
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
   const res = createMockResponse();
 
@@ -365,6 +369,7 @@ test('stale event result is acknowledged without regressing order state', async 
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
   const res = createMockResponse();
 
@@ -426,6 +431,7 @@ test('a later corrected paid event can succeed after a previously committed amou
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
 
   const mismatch = createMockResponse();
@@ -451,6 +457,7 @@ test('refund transaction failure leaves the same refund event retryable', async 
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
 
   const first = createMockResponse();
@@ -475,6 +482,7 @@ test('refund ownership-switch failure leaves the same event retryable for an ato
   const handler = createAsaasWebhookHandler({
     getSupabaseFn: () => supabase,
     getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {},
   });
 
   const first = createMockResponse();
@@ -592,4 +600,57 @@ test('migration 017 never infers historical amount verification from orders.paid
 test('mismatched later paid event does not overwrite a previously verified ledger amount', async () => {
   const sql = await readFile(new URL('../supabase/migration_017_atomic_payment_webhooks.sql', import.meta.url), 'utf8');
   assert.match(sql, /provider_amount_cents\s*=\s*case[\s\S]*v_attempt\.state\s*=\s*'paid'[\s\S]*v_attempt\.amount_verification_state\s*=\s*'verified'[\s\S]*then\s+v_attempt\.provider_amount_cents[\s\S]*else\s+p_provider_amount_cents[\s\S]*end/i);
+});
+
+test('duplicate committed webhook still runs payment-resolution post-processing for recovery', async () => {
+  const { createAsaasWebhookHandler } = await import('../api/asaas-webhook.js');
+  const supabase = createWebhookSupabase({
+    rpcResults: [{ data: { result: 'additional_paid', duplicate: true, payment_state: 'paid', attempt_state: 'paid', order_code: 'NA-ATOMIC-1' }, error: null }],
+  });
+  const post = [];
+  const handler = createAsaasWebhookHandler({
+    getSupabaseFn: () => supabase,
+    getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async (_sb, input) => { post.push(input); },
+  });
+  const res = createMockResponse();
+
+  await handler(atomicWebhookRequest({ eventId: 'evt-duplicate-recovery' }), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.duplicate, true);
+  assert.equal(post.length, 1);
+  assert.equal(post[0].atomicResult.result, 'additional_paid');
+  assert.equal(post[0].atomicResult.duplicate, true);
+});
+
+test('post-financial resolution failure returns 500 so a repeated committed webhook can recover it', async () => {
+  const { createAsaasWebhookHandler } = await import('../api/asaas-webhook.js');
+  const supabase = createWebhookSupabase({
+    rpcResults: [
+      { data: { result: 'additional_paid', duplicate: false, payment_state: 'paid', attempt_state: 'paid', order_code: 'NA-ATOMIC-1' }, error: null },
+      { data: { result: 'additional_paid', duplicate: true, payment_state: 'paid', attempt_state: 'paid', order_code: 'NA-ATOMIC-1' }, error: null },
+    ],
+  });
+  let calls = 0;
+  const handler = createAsaasWebhookHandler({
+    getSupabaseFn: () => supabase,
+    getAsaasConfigFn: () => ({ webhookToken: 'test-webhook-token' }),
+    processPaymentResolutionWebhookFn: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('simulated resolution failure');
+    },
+  });
+
+  const first = createMockResponse();
+  await handler(atomicWebhookRequest({ eventId: 'evt-post-financial-recovery' }), first);
+  const second = createMockResponse();
+  await handler(atomicWebhookRequest({ eventId: 'evt-post-financial-recovery' }), second);
+
+  assert.equal(first.statusCode, 500);
+  assert.equal(first.body.error, 'payment_resolution_processing_failed');
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.body.duplicate, true);
+  assert.equal(calls, 2);
+  assert.equal(supabase.rpcCalls, 2);
 });

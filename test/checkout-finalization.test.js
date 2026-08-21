@@ -361,6 +361,7 @@ test('completed same-key handler replay never creates another provider payment',
     payment_state: 'pending',
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => ({}),
     findIdempotentOrder: async () => ({ data: order, error: null }),
@@ -394,6 +395,7 @@ test('in-progress same-key handler request returns 409 and never creates payment
     payment_state: 'pending',
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => ({}),
     findIdempotentOrder: async () => ({ data: order, error: null }),
@@ -424,6 +426,7 @@ test('23505 race resolving to in-progress row returns 409 and never creates paym
     payment_state: 'pending',
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => createInsertOnlySupabase({ data: null, error: { code: '23505', message: 'duplicate key' } }),
     findIdempotentOrder: async () => {
@@ -741,6 +744,7 @@ test('initial checkout with existing pending PIX but no artifact returns retryab
     },
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
     findIdempotentOrder: async () => ({ data: null, error: null }),
@@ -831,6 +835,7 @@ test('same checkout key after PIX artifact failure recovers the existing charge 
     },
   };
   const handler = createOrdersHandler({
+    hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
     findIdempotentOrder: async () => ({ data: order, error: null }),

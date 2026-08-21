@@ -117,8 +117,12 @@ export function mapAsaasStatusToPaymentState(status) {
     case 'OVERDUE':
       return 'expired';
     case 'REFUNDED':
-    case 'REFUND_REQUESTED':
       return 'refunded';
+    case 'REFUND_REQUESTED':
+    case 'REFUND_IN_PROGRESS':
+    case 'PARTIALLY_REFUNDED':
+    case 'REFUND_DENIED':
+      return 'paid';
     case 'DELETED':
       return 'cancelled';
     case 'PAYMENT_REPROVED_BY_RISK_ANALYSIS':
@@ -142,8 +146,12 @@ export function mapAsaasEventToPaymentState(event) {
     case 'PAYMENT_DELETED':
       return 'cancelled';
     case 'PAYMENT_REFUNDED':
-    case 'PAYMENT_REFUND_REQUESTED':
       return 'refunded';
+    case 'PAYMENT_REFUND_REQUESTED':
+    case 'PAYMENT_REFUND_IN_PROGRESS':
+    case 'PAYMENT_PARTIALLY_REFUNDED':
+    case 'PAYMENT_REFUND_DENIED':
+      return 'paid';
     case 'PAYMENT_REPROVED_BY_RISK_ANALYSIS':
       return 'failed';
     case 'PAYMENT_CREATED':

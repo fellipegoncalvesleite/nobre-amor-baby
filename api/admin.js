@@ -18,6 +18,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { requireManager } from './_supabaseAdmin.js';
 import { transitionOrderFulfillment } from './_inventory.js';
+import { listPaymentResolutions, reconcilePaymentResolution, requestOrderClosure } from './_paymentResolution.js';
 
 /* ── helpers ─────────────────────────────────────── */
 
@@ -63,6 +64,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-key');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
+  const { resource, id } = req.query;
+
   /* ── auth: JWT first, fallback to x-admin-key ──── */
   const authHeader = req.headers['authorization'] || '';
   req.authUser = null;
@@ -79,18 +82,25 @@ export default async function handler(req, res) {
     }
   }
 
+  if (resource === 'payment-resolutions' && !req.authUser) {
+    return json(res, 403, {
+      error: 'manager_auth_required',
+      message: 'Esta operação de resolução financeira exige autenticação de gerente.',
+    });
+  }
+
   /* ── supabase ──────────────────────────────────── */
   const sbUrl = process.env.SUPABASE_URL;
   const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!sbUrl || !sbKey) return json(res, 500, { error: 'missing_env', message: 'Database not configured.' });
   const supabase = createClient(sbUrl, sbKey);
 
-  const { resource, id } = req.query;
-
   try {
     switch (resource) {
       case 'orders':
         return id ? await handleOrderDetail(req, res, supabase, id) : await handleOrders(req, res, supabase);
+      case 'payment-resolutions':
+        return await handlePaymentResolutions(req, res, supabase, id);
       case 'products':
         return id ? await handleProductDetail(req, res, supabase, id) : await handleProducts(req, res, supabase);
       case 'collections':
@@ -248,16 +258,60 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
         cancelReason: body.cancel_reason?.trim() || null,
       });
     } catch (error) {
-      if (Number(error?.status) >= 500) {
-        console.error('[admin/orders/patch] fulfillment transaction error:', {
-          code: error?.code,
-          message: error?.cause?.message || error?.message,
+      const isClosureTarget = body.status === 'cancelled' || body.status === 'rejected';
+      if (isClosureTarget && error?.code === 'inventory_release_requires_payment_resolution') {
+        const reason = body.status === 'rejected'
+          ? body.rejected_reason.trim()
+          : body.cancel_reason.trim();
+        try {
+          const resolution = await requestOrderClosure(supabase, {
+            order: currentOrder,
+            targetStatus: body.status,
+            reason,
+          });
+          if (!resolution.resolutionPending && resolution.order?.status === body.status) {
+            updated = resolution.order;
+          } else {
+            const pendingOrder = { ...updated };
+            const { data: pendingItems } = await supabase
+              .from('order_items')
+              .select('*')
+              .eq('order_id', currentOrder.id)
+              .order('id', { ascending: true });
+            pendingOrder.items = pendingItems || [];
+            return json(res, 202, {
+              order: pendingOrder,
+              resolutionPending: true,
+              closure: resolution.closure ? {
+                id: resolution.closure.id,
+                state: resolution.closure.state,
+                targetStatus: resolution.closure.target_status || body.status,
+                lastErrorCode: resolution.closure.last_error_code || null,
+              } : null,
+            });
+          }
+        } catch (resolutionError) {
+          console.error('[admin/orders/patch] payment resolution error:', {
+            code: resolutionError?.code,
+            message: resolutionError?.message,
+          });
+          return json(res, 500, {
+            error: resolutionError?.code || 'payment_resolution_failed',
+            message: 'Falha ao iniciar a resolução financeira do pedido.',
+          });
+        }
+      } else {
+        if (Number(error?.status) >= 500) {
+          console.error('[admin/orders/patch] fulfillment transaction error:', {
+            code: error?.code,
+            message: error?.cause?.message || error?.message,
+          });
+        }
+        return json(res, Number(error?.status) || 500, {
+          error: error?.code || 'inventory_transaction_failed',
+          message: error?.message || 'Falha ao atualizar o atendimento do pedido.',
         });
       }
-      return json(res, Number(error?.status) || 500, {
-        error: error?.code || 'inventory_transaction_failed',
-        message: error?.message || 'Falha ao atualizar o atendimento do pedido.',
-      });
     }
   }
 
@@ -270,6 +324,34 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
 
   updated.items = items || [];
   return json(res, 200, { order: updated });
+}
+
+
+/* ══════════════════════════════════════════════════
+   PAYMENT RESOLUTIONS — operational recovery
+   ══════════════════════════════════════════════════ */
+async function handlePaymentResolutions(req, res, supabase, id) {
+  if (req.method === 'GET') {
+    const resolutions = await listPaymentResolutions(supabase);
+    return json(res, 200, { resolutions });
+  }
+
+  if (req.method === 'POST') {
+    if (!id || req.query.action !== 'reconcile') {
+      return json(res, 400, {
+        error: 'bad_request',
+        message: 'Informe id e action=reconcile.',
+      });
+    }
+    const result = await reconcilePaymentResolution(supabase, id);
+    return json(res, 200, {
+      resolution: result.action,
+      closure: result.closureResult?.closure || null,
+      resolutionPending: Boolean(result.closureResult?.resolutionPending),
+    });
+  }
+
+  return json(res, 405, { error: 'method_not_allowed', message: 'Use GET ou POST.' });
 }
 
 /* ══════════════════════════════════════════════════

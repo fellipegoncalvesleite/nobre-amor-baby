@@ -27,6 +27,7 @@ import {
   resolvePersistedCheckout,
 } from './_checkoutFinalization.js';
 import { reserveOrderInventory } from './_inventory.js';
+import { hasOpenOrderClosure } from './_paymentResolution.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -280,6 +281,7 @@ export function createOrdersHandler(overrides = {}) {
     ensureOriginalPaymentAttempt,
     persistPaymentAttemptIdentity,
     reserveOrderInventory,
+    hasOpenOrderClosure,
     ...overrides,
   };
 
@@ -327,6 +329,21 @@ export function createOrdersHandler(overrides = {}) {
       return json(res, 500, { error: 'db_error', message: 'Falha ao verificar repetição do pedido.' });
     }
     if (existingOrder) {
+      let openClosure;
+      try {
+        openClosure = await deps.hasOpenOrderClosure(supabase, existingOrder.id);
+      } catch (closureError) {
+        console.error('[orders] closure lookup error:', { code: closureError?.code, message: closureError?.message });
+        return json(res, 500, { error: 'db_error', message: 'Falha ao verificar o encerramento do pedido.' });
+      }
+      if (openClosure) {
+        return json(res, 409, {
+          error: 'order_closure_in_progress',
+          message: 'Este checkout está em processo de cancelamento ou recusa e não pode criar nem recuperar outra cobrança.',
+          orderCode: existingOrder.order_code,
+        });
+      }
+
       const inventoryState = existingOrder.inventory_state || 'legacy_untracked';
       if (['released', 'consumed'].includes(inventoryState)) {
         return json(res, 409, {
@@ -537,6 +554,20 @@ export function createOrdersHandler(overrides = {}) {
           });
         }
         if (racedOrder) {
+          let racedClosure;
+          try {
+            racedClosure = await deps.hasOpenOrderClosure(supabase, racedOrder.id);
+          } catch (closureError) {
+            console.error('[orders] idempotency-race closure lookup error:', { code: closureError?.code, message: closureError?.message });
+            return json(res, 500, { error: 'db_error', message: 'Falha ao verificar o encerramento do pedido.' });
+          }
+          if (racedClosure) {
+            return json(res, 409, {
+              error: 'order_closure_in_progress',
+              message: 'Este checkout está em processo de cancelamento ou recusa e não pode criar nem recuperar outra cobrança.',
+              orderCode: racedOrder.order_code,
+            });
+          }
           return respondToExistingCheckout({
             supabase,
             order: racedOrder,
@@ -599,6 +630,21 @@ export function createOrdersHandler(overrides = {}) {
 
     const paymentMethod = order.payment_method || payment.method;
     const customerDocument = order.customer_cpf_cnpj || normalizeCpfCnpj(customer?.cpfCnpj);
+
+    let closureBeforePayment;
+    try {
+      closureBeforePayment = await deps.hasOpenOrderClosure(supabase, order.id);
+    } catch (closureError) {
+      console.error('[orders] pre-payment closure lookup error:', { code: closureError?.code, message: closureError?.message });
+      return json(res, 500, { error: 'db_error', message: 'Falha ao verificar o encerramento do pedido.' });
+    }
+    if (closureBeforePayment) {
+      return json(res, 409, {
+        error: 'order_closure_in_progress',
+        message: 'Este checkout está em processo de cancelamento ou recusa e não pode criar outra cobrança.',
+        orderCode: order.order_code,
+      });
+    }
 
     let originalPaymentAttempt;
     try {

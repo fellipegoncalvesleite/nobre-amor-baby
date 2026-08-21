@@ -14,6 +14,7 @@ import {
   persistPaymentAttemptIdentity,
 } from './_paymentLedger.js';
 import { transitionOrderFulfillment } from './_inventory.js';
+import { hasOpenOrderClosure, requestOrderClosure } from './_paymentResolution.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -405,6 +406,7 @@ async function handleOrder(req, res, supabase) {
 export async function handleCancelOrder(req, res, supabase, overrides = {}) {
   const requireAccess = overrides.requireAccess || requireOrderAccess;
   const transition = overrides.transition || transitionOrderFulfillment;
+  const requestClosure = overrides.requestClosure || requestOrderClosure;
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
   }
@@ -438,16 +440,54 @@ export async function handleCancelOrder(req, res, supabase, overrides = {}) {
       cancelReason: reason.trim(),
     });
   } catch (error) {
-    if (Number(error?.status) >= 500) {
-      console.error('[public/cancel-order] fulfillment transaction error:', {
-        code: error?.code,
-        message: error?.cause?.message || error?.message,
+    if (error?.code === 'inventory_release_requires_payment_resolution') {
+      try {
+        const resolution = await requestClosure(supabase, {
+          order,
+          targetStatus: 'cancelled',
+          reason: reason.trim(),
+        });
+        if (!resolution.resolutionPending && resolution.order?.status === 'cancelled') {
+          updated = resolution.order;
+        } else {
+          return json(res, 202, {
+            accepted: true,
+            resolutionPending: true,
+            orderCode: order.order_code,
+            status: order.status,
+            paymentState: order.payment_state,
+            closure: resolution.closure ? {
+              id: resolution.closure.id,
+              state: resolution.closure.state,
+              targetStatus: resolution.closure.target_status || 'cancelled',
+            } : null,
+            message: 'Cancelamento solicitado. Aguardando resolução do pagamento.',
+          });
+        }
+      } catch (resolutionError) {
+        if (Number(resolutionError?.status) >= 500 || !resolutionError?.status) {
+          console.error('[public/cancel-order] payment resolution error:', {
+            code: resolutionError?.code,
+            message: resolutionError?.message,
+          });
+        }
+        return json(res, Number(resolutionError?.status) || 500, {
+          error: resolutionError?.code || 'payment_resolution_failed',
+          message: 'Não foi possível iniciar a resolução financeira do cancelamento.',
+        });
+      }
+    } else {
+      if (Number(error?.status) >= 500) {
+        console.error('[public/cancel-order] fulfillment transaction error:', {
+          code: error?.code,
+          message: error?.cause?.message || error?.message,
+        });
+      }
+      return json(res, Number(error?.status) || 500, {
+        error: error?.code || 'inventory_transaction_failed',
+        message: error?.message || 'Falha ao cancelar pedido.',
       });
     }
-    return json(res, Number(error?.status) || 500, {
-      error: error?.code || 'inventory_transaction_failed',
-      message: error?.message || 'Falha ao cancelar pedido.',
-    });
   }
 
   return json(res, 200, {
@@ -547,6 +587,18 @@ async function handleRetryPayment(req, res, supabase) {
   if (!auth) return null;
   if (order.status !== 'new') {
     return json(res, 400, { error: 'invalid_status', message: 'A cobrança só pode ser recriada para pedidos novos.' });
+  }
+  try {
+    const openClosure = await hasOpenOrderClosure(supabase, order.id);
+    if (openClosure) {
+      return json(res, 409, {
+        error: 'order_closure_in_progress',
+        message: 'Este pedido está em processo de cancelamento ou recusa e não pode gerar uma nova cobrança.',
+      });
+    }
+  } catch (closureError) {
+    console.error('[public/retry-payment] closure lookup error:', { code: closureError?.code, message: closureError?.message });
+    return json(res, 500, { error: 'db_error', message: 'Erro ao verificar o encerramento do pedido.' });
   }
 
   const paymentMethod = method || order.payment_method;
