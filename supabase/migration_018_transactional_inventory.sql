@@ -272,13 +272,21 @@ begin
       if v_order.inventory_state <> 'reserved' then
         raise exception using errcode = 'P0001', message = 'inventory_not_reserved';
       end if;
-      if not exists (
-        select 1
-        from public.payment_attempts pa
-        where pa.order_id = v_order.id
-          and pa.state = 'paid'
-          and pa.amount_verification_state = 'verified'
-      ) then
+      if v_order.payment_state <> 'paid'
+        or v_order.active_payment_attempt_id is null
+        or not exists (
+          select 1
+          from public.payment_attempts pa
+          where pa.id = v_order.active_payment_attempt_id
+            and pa.order_id = v_order.id
+            and pa.state = 'paid'
+            and pa.amount_verification_state = 'verified'
+            and pa.provider = 'asaas'
+            and pa.provider_payment_id is not null
+            and pa.provider_reported_state = 'paid'
+            and pa.provider_amount_cents = v_order.total_cents
+        )
+      then
         raise exception using errcode = 'P0001', message = 'verified_payment_required';
       end if;
     elsif v_order.payment_state <> 'paid' then

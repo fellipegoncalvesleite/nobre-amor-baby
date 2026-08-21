@@ -568,3 +568,53 @@ test('admin fulfillment actions expose only the next forward states', async () =
     assert.deepEqual(getAdminFulfillmentActions(terminal), []);
   }
 });
+
+test('admin product creation persists an empty size_options array when omitted', async (t) => {
+  let insertedProduct = null;
+  const server = http.createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    res.setHeader('Content-Type', 'application/json');
+
+    if (req.url.startsWith('/rest/v1/products') && req.method === 'POST') {
+      insertedProduct = JSON.parse(body);
+      res.statusCode = 201;
+      res.end(JSON.stringify(insertedProduct));
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end(JSON.stringify({ message: `unexpected ${req.method} ${req.url}` }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previous = {
+    url: process.env.SUPABASE_URL,
+    key: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    admin: process.env.ADMIN_API_KEY,
+  };
+  t.after(() => {
+    if (previous.url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previous.url;
+    if (previous.key === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previous.key;
+    if (previous.admin === undefined) delete process.env.ADMIN_API_KEY; else process.env.ADMIN_API_KEY = previous.admin;
+  });
+  process.env.SUPABASE_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  process.env.ADMIN_API_KEY = 'test-admin-key';
+
+  const res = createMockResponse();
+  await adminHandler({
+    method: 'POST',
+    headers: { 'x-admin-key': 'test-admin-key' },
+    query: { resource: 'products' },
+    body: {
+      name: 'Body sem tamanhos',
+      price_cents: 5000,
+      size_group: 'roupa',
+    },
+  }, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.deepEqual(insertedProduct.size_options, []);
+});

@@ -338,7 +338,7 @@ async function handleProducts(req, res, supabase) {
     featured: !!featured,
     is_public: is_public !== false,
     image_urls: image_urls || [],
-    size_options: size_options || null,
+    size_options: size_options || [],
     collection_id: collection_id || null,
     age_min_months: age_min_months != null ? parseInt(age_min_months) : null,
     age_max_months: age_max_months != null ? parseInt(age_max_months) : null,

@@ -48,6 +48,33 @@ function seedOrder({ id, code, status = 'new', inventoryState = 'unreserved', fi
        values ('${id}', '${code}', '${status}', '${paymentState}', '${finalization}', '${inventoryState}', 1000);`);
 }
 
+function seedPaymentAttempt({
+  id,
+  orderId,
+  attemptKey,
+  state,
+  provider = 'asaas',
+  providerPaymentId = null,
+  providerReportedState = null,
+  providerAmountCents = null,
+  amountVerificationState = 'not_applicable',
+}) {
+  const sqlValue = (value) => value === null ? 'null' : `'${value}'`;
+  sql(`insert into payment_attempts (
+         id, order_id, attempt_key, external_reference, payment_method, state,
+         provider, provider_payment_id, provider_reported_state,
+         provider_amount_cents, amount_verification_state
+       ) values (
+         '${id}', '${orderId}', '${attemptKey}', '${attemptKey}-${orderId}', 'pix', '${state}',
+         '${provider}', ${sqlValue(providerPaymentId)}, ${sqlValue(providerReportedState)},
+         ${providerAmountCents === null ? 'null' : providerAmountCents}, '${amountVerificationState}'
+       );`);
+}
+
+function setActivePaymentAttempt(orderId, attemptId) {
+  sql(`update orders set active_payment_attempt_id = '${attemptId}' where id = '${orderId}';`);
+}
+
 function seedItem({ orderId, productId, qty = 1, size = '' }) {
   sql(`insert into order_items (order_id, product_id, product_name, size, qty, unit_price_cents, line_total_cents)
        values ('${orderId}', '${productId}', 'Produto', ${size === null ? 'null' : `'${size}'`}, ${qty}, 1000, ${qty * 1000});`);
@@ -218,11 +245,21 @@ test('multi-product reservation failure rolls back every product', () => {
 test('tracked fulfillment advances only through the forward graph without changing reserved stock', () => {
   const productId = '10000000-0000-0000-0000-000000000008';
   const orderId = '20000000-0000-0000-0000-000000000008';
+  const attemptId = '30000000-0000-0000-0000-000000000008';
   seedProduct({ id: productId, stock: 3 });
   seedOrder({ id: orderId, code: 'NA-FORWARD', inventoryState: 'reserved', finalization: 'finalized', paymentState: 'paid' });
   seedItem({ orderId, productId, qty: 2 });
-  sql(`insert into payment_attempts (order_id, attempt_key, external_reference, payment_method, state, provider_payment_id, amount_verification_state)
-       values ('${orderId}', 'original', 'NA-FORWARD', 'pix', 'paid', 'pay-forward', 'verified');`);
+  seedPaymentAttempt({
+    id: attemptId,
+    orderId,
+    attemptKey: 'forward-owner',
+    state: 'paid',
+    providerPaymentId: 'pay-forward',
+    providerReportedState: 'paid',
+    providerAmountCents: 1000,
+    amountVerificationState: 'verified',
+  });
+  setActivePaymentAttempt(orderId, attemptId);
   assert.equal(transition(orderId, 'confirmed'), 'confirmed|reserved');
   assert.equal(transition(orderId, 'packing'), 'packing|reserved');
   assert.equal(transition(orderId, 'shipped'), 'shipped|reserved');
@@ -242,13 +279,182 @@ test('direct completion and backward reset are rejected atomically', () => {
   assert.equal(sql(`select stock_count from products where id = '${productId}';`), '3');
 });
 
-test('confirmation requires verified paid ownership for tracked orders', () => {
+test('confirmation accepts the exact active verified Asaas payment owner', () => {
   const orderId = '20000000-0000-0000-0000-000000000010';
+  const attemptId = '30000000-0000-0000-0000-000000000010';
   seedOrder({ id: orderId, code: 'NA-PAYMENT', inventoryState: 'reserved', finalization: 'finalized', paymentState: 'paid' });
   assert.throws(() => transition(orderId, 'confirmed'), /verified_payment_required/);
-  sql(`insert into payment_attempts (order_id, attempt_key, external_reference, payment_method, state, provider_payment_id, amount_verification_state)
-       values ('${orderId}', 'original', 'NA-PAYMENT', 'pix', 'paid', 'pay-verified', 'verified');`);
+  seedPaymentAttempt({
+    id: attemptId,
+    orderId,
+    attemptKey: 'active-paid-owner',
+    state: 'paid',
+    providerPaymentId: 'pay-verified',
+    providerReportedState: 'paid',
+    providerAmountCents: 1000,
+    amountVerificationState: 'verified',
+  });
+  setActivePaymentAttempt(orderId, attemptId);
   assert.equal(transition(orderId, 'confirmed'), 'confirmed|reserved');
+});
+
+test('tracked confirmation rejects a non-active verified paid attempt for cancelled or refunded ownership', () => {
+  for (const [index, paymentState] of ['cancelled', 'refunded'].entries()) {
+    const suffix = String(20 + index).padStart(3, '0');
+    const productId = `10000000-0000-0000-0000-000000000${suffix}`;
+    const orderId = `20000000-0000-0000-0000-000000000${suffix}`;
+    const activeAttemptId = `30000000-0000-0000-0000-000000000${suffix}`;
+    const otherAttemptId = `40000000-0000-0000-0000-000000000${suffix}`;
+    seedProduct({ id: productId, stock: 3 });
+    seedOrder({
+      id: orderId,
+      code: `NA-NON-ACTIVE-${paymentState.toUpperCase()}`,
+      inventoryState: 'reserved',
+      finalization: 'finalized',
+      paymentState,
+    });
+    seedItem({ orderId, productId });
+    seedPaymentAttempt({
+      id: activeAttemptId,
+      orderId,
+      attemptKey: `active-${paymentState}`,
+      state: paymentState,
+      providerPaymentId: `pay-active-${paymentState}`,
+      providerReportedState: paymentState,
+    });
+    seedPaymentAttempt({
+      id: otherAttemptId,
+      orderId,
+      attemptKey: `other-paid-${paymentState}`,
+      state: 'paid',
+      providerPaymentId: `pay-other-${paymentState}`,
+      providerReportedState: 'paid',
+      providerAmountCents: 1000,
+      amountVerificationState: 'verified',
+    });
+    setActivePaymentAttempt(orderId, activeAttemptId);
+
+    assert.throws(() => transition(orderId, 'confirmed'), /verified_payment_required/);
+    assert.equal(
+      sql(`select status || '|' || payment_state || '|' || inventory_state from orders where id = '${orderId}';`),
+      `new|${paymentState}|reserved`,
+    );
+    assert.equal(sql(`select stock_count from products where id = '${productId}';`), '3');
+  }
+});
+
+test('tracked confirmation rejects a non-paid active owner even when another attempt is verified paid', () => {
+  for (const [index, activeState] of ['pending', 'cancelled', 'refunded', 'payment_review'].entries()) {
+    const suffix = String(30 + index).padStart(3, '0');
+    const orderId = `20000000-0000-0000-0000-000000000${suffix}`;
+    const activeAttemptId = `30000000-0000-0000-0000-000000000${suffix}`;
+    const otherAttemptId = `40000000-0000-0000-0000-000000000${suffix}`;
+    seedOrder({
+      id: orderId,
+      code: `NA-WRONG-ACTIVE-${activeState.toUpperCase()}`,
+      inventoryState: 'reserved',
+      finalization: 'finalized',
+      paymentState: 'paid',
+    });
+    seedPaymentAttempt({
+      id: activeAttemptId,
+      orderId,
+      attemptKey: `active-${activeState}`,
+      state: activeState,
+      providerPaymentId: `pay-active-${activeState}`,
+      providerReportedState: activeState === 'payment_review' ? 'paid' : activeState,
+      amountVerificationState: activeState === 'payment_review' ? 'legacy_unverified' : 'not_applicable',
+    });
+    seedPaymentAttempt({
+      id: otherAttemptId,
+      orderId,
+      attemptKey: `other-paid-${activeState}`,
+      state: 'paid',
+      providerPaymentId: `pay-other-${activeState}`,
+      providerReportedState: 'paid',
+      providerAmountCents: 1000,
+      amountVerificationState: 'verified',
+    });
+    setActivePaymentAttempt(orderId, activeAttemptId);
+
+    assert.throws(() => transition(orderId, 'confirmed'), /verified_payment_required/);
+    assert.equal(sql(`select status || '|' || inventory_state from orders where id = '${orderId}';`), 'new|reserved');
+  }
+});
+
+test('tracked confirmation requires complete provider-paid provenance on the active owner', () => {
+  const invalidProvenance = [
+    { label: 'missing-provider-id', provider: 'asaas', reported: 'paid', amount: 1000, paymentId: null },
+    { label: 'missing-amount', provider: 'asaas', reported: 'paid', amount: null },
+    { label: 'wrong-amount', provider: 'asaas', reported: 'paid', amount: 999 },
+    { label: 'wrong-state', provider: 'asaas', reported: 'pending', amount: 1000 },
+    { label: 'wrong-provider', provider: 'other', reported: 'paid', amount: 1000 },
+  ];
+
+  for (const [index, provenance] of invalidProvenance.entries()) {
+    const suffix = String(40 + index).padStart(3, '0');
+    const orderId = `20000000-0000-0000-0000-000000000${suffix}`;
+    const attemptId = `30000000-0000-0000-0000-000000000${suffix}`;
+    seedOrder({
+      id: orderId,
+      code: `NA-PROVENANCE-${provenance.label.toUpperCase()}`,
+      inventoryState: 'reserved',
+      finalization: 'finalized',
+      paymentState: 'paid',
+    });
+    seedPaymentAttempt({
+      id: attemptId,
+      orderId,
+      attemptKey: `active-${provenance.label}`,
+      state: 'paid',
+      provider: provenance.provider,
+      providerPaymentId: provenance.paymentId === null ? null : `pay-${provenance.label}`,
+      providerReportedState: provenance.reported,
+      providerAmountCents: provenance.amount,
+      amountVerificationState: 'verified',
+    });
+    setActivePaymentAttempt(orderId, attemptId);
+
+    assert.throws(() => transition(orderId, 'confirmed'), /verified_payment_required/);
+    assert.equal(sql(`select status || '|' || inventory_state from orders where id = '${orderId}';`), 'new|reserved');
+  }
+});
+
+test('tracked confirmation rejects an active attempt that belongs to another order', () => {
+  const productId = '10000000-0000-0000-0000-000000000050';
+  const orderId = '20000000-0000-0000-0000-000000000050';
+  const otherOrderId = '20000000-0000-0000-0000-000000000051';
+  const wrongOwnerId = '30000000-0000-0000-0000-000000000050';
+  const nonActivePaidId = '40000000-0000-0000-0000-000000000050';
+  seedProduct({ id: productId, stock: 3 });
+  seedOrder({ id: orderId, code: 'NA-WRONG-ORDER-OWNER', inventoryState: 'reserved', finalization: 'finalized', paymentState: 'paid' });
+  seedOrder({ id: otherOrderId, code: 'NA-ACTUAL-OWNER', inventoryState: 'reserved', finalization: 'finalized', paymentState: 'paid' });
+  seedItem({ orderId, productId });
+  seedPaymentAttempt({
+    id: wrongOwnerId,
+    orderId: otherOrderId,
+    attemptKey: 'belongs-to-other-order',
+    state: 'paid',
+    providerPaymentId: 'pay-wrong-order-owner',
+    providerReportedState: 'paid',
+    providerAmountCents: 1000,
+    amountVerificationState: 'verified',
+  });
+  seedPaymentAttempt({
+    id: nonActivePaidId,
+    orderId,
+    attemptKey: 'non-active-paid-current-order',
+    state: 'paid',
+    providerPaymentId: 'pay-non-active-current-order',
+    providerReportedState: 'paid',
+    providerAmountCents: 1000,
+    amountVerificationState: 'verified',
+  });
+  setActivePaymentAttempt(orderId, wrongOwnerId);
+
+  assert.throws(() => transition(orderId, 'confirmed'), /verified_payment_required/);
+  assert.equal(sql(`select status || '|' || inventory_state from orders where id = '${orderId}';`), 'new|reserved');
+  assert.equal(sql(`select stock_count from products where id = '${productId}';`), '3');
 });
 
 test('safe cancellation releases inventory exactly once', () => {
@@ -277,12 +483,13 @@ test('unsafe cancellation leaves fulfillment and inventory untouched', () => {
   assert.equal(sql(`select stock_count from products where id = '${productId}';`), '3');
 });
 
-test('legacy fulfillment never mutates product inventory', () => {
+test('legacy fulfillment uses historical paid state and never mutates product inventory', () => {
   const productId = '10000000-0000-0000-0000-000000000012';
   const orderId = '20000000-0000-0000-0000-000000000013';
   seedProduct({ id: productId, stock: 4 });
-  seedOrder({ id: orderId, code: 'NA-LEGACY', status: 'confirmed', inventoryState: 'legacy_untracked', finalization: 'finalized', paymentState: 'paid' });
+  seedOrder({ id: orderId, code: 'NA-LEGACY', inventoryState: 'legacy_untracked', finalization: 'finalized', paymentState: 'paid' });
   seedItem({ orderId, productId, qty: 2 });
+  assert.equal(transition(orderId, 'confirmed'), 'confirmed|legacy_untracked');
   assert.equal(transition(orderId, 'packing'), 'packing|legacy_untracked');
   assert.equal(sql(`select stock_count from products where id = '${productId}';`), '4');
 });
