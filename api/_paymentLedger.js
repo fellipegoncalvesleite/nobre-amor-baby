@@ -172,7 +172,7 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
     if ((existing.attempt_kind || 'retry') !== 'original') {
       throw paymentReferenceConflict('O registro reservado ao pagamento original já pertence a outra tentativa.');
     }
-    return persistPaymentAttemptIdentity(supabase, existing, {
+    const persisted = await persistPaymentAttemptIdentity(supabase, existing, {
       providerPaymentId,
       state,
       lastEventId,
@@ -180,6 +180,7 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
       providerAmountCents,
       amountVerificationState,
     });
+    return { ...persisted, checkoutClaimCreated: false };
   }
 
   const row = {
@@ -210,7 +211,7 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
       if ((raced.data.attempt_kind || 'retry') !== 'original') {
         throw paymentReferenceConflict('O registro reservado ao pagamento original já pertence a outra tentativa.');
       }
-      return persistPaymentAttemptIdentity(supabase, raced.data, {
+      const persisted = await persistPaymentAttemptIdentity(supabase, raced.data, {
         providerPaymentId,
         state,
         lastEventId,
@@ -218,6 +219,7 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
         providerAmountCents,
         amountVerificationState,
       });
+      return { ...persisted, checkoutClaimCreated: false };
     }
     if (providerPaymentId) {
       const { data: providerOwner, error: providerLookupError } = await supabase
@@ -232,7 +234,7 @@ export async function ensureOriginalPaymentAttempt(supabase, order, {
   }
 
   if (error || !data) throw error || new Error('Falha ao registrar o pagamento original.');
-  return data;
+  return { ...data, checkoutClaimCreated: true };
 }
 
 export async function findOtherPaidPaymentForOrder(supabase, orderId, excludedPaymentRecordId) {

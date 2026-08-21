@@ -13,6 +13,7 @@ import {
   findOpenRetryPaymentAttempt,
   persistPaymentAttemptIdentity,
 } from './_paymentLedger.js';
+import { transitionOrderFulfillment } from './_inventory.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -401,7 +402,9 @@ async function handleOrder(req, res, supabase) {
   return json(res, 200, { order: sanitizeOrder(order, items || []) });
 }
 
-async function handleCancelOrder(req, res, supabase) {
+export async function handleCancelOrder(req, res, supabase, overrides = {}) {
+  const requireAccess = overrides.requireAccess || requireOrderAccess;
+  const transition = overrides.transition || transitionOrderFulfillment;
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
   }
@@ -421,38 +424,37 @@ async function handleCancelOrder(req, res, supabase) {
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
   }
   if (!order) return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
-  const auth = await requireOrderAccess(req, res, order);
+  const auth = await requireAccess(req, res, order);
   if (!auth) return null;
 
   if (order.status !== 'new') {
     return json(res, 400, { error: 'cannot_cancel', message: 'Este pedido já entrou em processamento e não pode mais ser cancelado.' });
   }
-  if (order.payment_state === 'paid') {
-    return json(res, 400, { error: 'cannot_cancel_paid', message: 'Este pedido já foi pago. Entre em contato para suporte.' });
-  }
-
-  const { data: updated, error: updateErr } = await supabase
-    .from('orders')
-    .update({
-      status: 'cancelled',
-      payment_state: 'cancelled',
-      cancel_reason: reason.trim(),
-      cancelled_at: new Date().toISOString(),
-    })
-    .eq('id', order.id)
-    .select('order_code, status, payment_state')
-    .single();
-
-  if (updateErr) {
-    console.error('[public/cancel-order] update error:', updateErr);
-    return json(res, 500, { error: 'db_error', message: 'Falha ao cancelar pedido.' });
+  let updated;
+  try {
+    updated = await transition(supabase, {
+      orderId: order.id,
+      newStatus: 'cancelled',
+      cancelReason: reason.trim(),
+    });
+  } catch (error) {
+    if (Number(error?.status) >= 500) {
+      console.error('[public/cancel-order] fulfillment transaction error:', {
+        code: error?.code,
+        message: error?.cause?.message || error?.message,
+      });
+    }
+    return json(res, Number(error?.status) || 500, {
+      error: error?.code || 'inventory_transaction_failed',
+      message: error?.message || 'Falha ao cancelar pedido.',
+    });
   }
 
   return json(res, 200, {
     success: true,
     orderCode: updated.order_code,
     status: updated.status,
-    paymentState: updated.payment_state,
+    paymentState: updated.payment_state || order.payment_state,
     message: 'Pedido cancelado com sucesso.',
   });
 }

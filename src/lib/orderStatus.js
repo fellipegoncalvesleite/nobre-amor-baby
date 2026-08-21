@@ -28,6 +28,30 @@ export const PAYMENT_STATUS_MAP = {
   cancelled: { label: 'Cancelado', shortLabel: 'Cancelado', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800/40 dark:text-slate-300', icon: FiSlash },
 };
 
+const ADMIN_FULFILLMENT_ACTIONS = {
+  new: [
+    { status: 'confirmed', label: 'Confirmar pedido' },
+    { status: 'rejected', label: 'Recusar pedido' },
+    { status: 'cancelled', label: 'Cancelar pedido' },
+  ],
+  confirmed: [
+    { status: 'packing', label: 'Iniciar embalagem' },
+    { status: 'cancelled', label: 'Cancelar pedido' },
+  ],
+  packing: [
+    { status: 'shipped', label: 'Marcar como enviado' },
+    { status: 'cancelled', label: 'Cancelar pedido' },
+  ],
+  shipped: [{ status: 'done', label: 'Marcar como entregue' }],
+  done: [],
+  rejected: [],
+  cancelled: [],
+};
+
+export function getAdminFulfillmentActions(status) {
+  return ADMIN_FULFILLMENT_ACTIONS[status] || [];
+}
+
 export function getFulfillmentStatus(status) {
   return FULFILLMENT_STATUS_MAP[status] || FULFILLMENT_STATUS_MAP.new;
 }

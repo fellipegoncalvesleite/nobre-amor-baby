@@ -17,6 +17,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { requireManager } from './_supabaseAdmin.js';
+import { transitionOrderFulfillment } from './_inventory.js';
 
 /* ── helpers ─────────────────────────────────────── */
 
@@ -188,51 +189,28 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
 
   /* ── PATCH ─────────────────────────────────────── */
   const body = req.body || {};
-  const updates = {};
+  const hasStatusChange = body.status !== undefined;
+  const hasManagerNotes = body.manager_notes !== undefined;
 
-  if (body.status !== undefined) {
-    if (!ALLOWED_STATUSES.includes(body.status)) {
-      return json(res, 400, {
-        error: 'invalid_status',
-        message: `Status inválido. Use: ${ALLOWED_STATUSES.join(', ')}.`
-      });
-    }
-    updates.status = body.status;
-
-    if (body.status === 'rejected') {
-      if (!body.rejected_reason?.trim()) {
-        return json(res, 400, {
-          error: 'missing_reason',
-          message: 'Motivo de rejeição é obrigatório.'
-        });
-      }
-      updates.rejected_reason = body.rejected_reason.trim();
-      updates.rejected_at = new Date().toISOString();
-    }
-
-    if (body.status === 'confirmed') {
-      updates.confirmed_at = new Date().toISOString();
-    }
-
-    // Reset timestamps when going back to 'new'
-    if (body.status === 'new') {
-      updates.rejected_reason = null;
-      updates.rejected_at = null;
-      updates.confirmed_at = null;
-      updates.cancel_reason = null;
-      updates.cancelled_at = null;
-    }
-  }
-
-  if (body.manager_notes !== undefined) {
-    updates.manager_notes = body.manager_notes;
-  }
-
-  if (Object.keys(updates).length === 0) {
+  if (!hasStatusChange && !hasManagerNotes) {
     return json(res, 400, { error: 'no_changes', message: 'Nenhum campo para atualizar.' });
   }
 
-  // Get current order (for stock management)
+  if (hasStatusChange && !ALLOWED_STATUSES.includes(body.status)) {
+    return json(res, 400, {
+      error: 'invalid_status',
+      message: `Status inválido. Use: ${ALLOWED_STATUSES.join(', ')}.`,
+    });
+  }
+
+  if (body.status === 'rejected' && !body.rejected_reason?.trim()) {
+    return json(res, 400, { error: 'missing_reason', message: 'Motivo de rejeição é obrigatório.' });
+  }
+
+  if (body.status === 'cancelled' && !body.cancel_reason?.trim()) {
+    return json(res, 400, { error: 'missing_reason', message: 'Motivo de cancelamento é obrigatório.' });
+  }
+
   const { data: currentOrder, error: fetchErr } = await supabase
     .from('orders')
     .select('*')
@@ -243,93 +221,44 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
     return json(res, 404, { error: 'not_found', message: `Pedido "${orderCode}" não encontrado.` });
   }
 
-  // Stock management
-  if (updates.status) {
-    const oldStatus = currentOrder.status;
-    const newStatus = updates.status;
+  let updated = currentOrder;
 
-    // Confirming → decrement stock
-    if (newStatus === 'confirmed' && oldStatus !== 'confirmed') {
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('product_id, qty')
-        .eq('order_id', currentOrder.id);
-
-      if (items?.length) {
-        for (const item of items) {
-          if (item.product_id) {
-            const { error: stockErr } = await supabase.rpc('decrement_stock', {
-              p_product_id: item.product_id,
-              p_qty: item.qty,
-            });
-            if (stockErr) console.error('[stock] decrement error:', stockErr);
-          }
-        }
-      }
+  // Notes are deliberately separate from the inventory transaction. Persisting
+  // them first ensures a note failure can never follow a successful stock change.
+  if (hasManagerNotes) {
+    const { data: notesOrder, error: notesErr } = await supabase
+      .from('orders')
+      .update({ manager_notes: body.manager_notes })
+      .eq('id', currentOrder.id)
+      .select()
+      .single();
+    if (notesErr) {
+      console.error('[admin/orders/patch] notes error:', notesErr);
+      return json(res, 500, { error: 'db_error', message: 'Falha ao atualizar observações do pedido.' });
     }
-
-    // Un-confirming → increment stock back
-    if (oldStatus === 'confirmed' && newStatus !== 'confirmed') {
-      const { data: items } = await supabase
-        .from('order_items')
-        .select('product_id, qty')
-        .eq('order_id', currentOrder.id);
-
-      if (items?.length) {
-        for (const item of items) {
-          if (item.product_id) {
-            const { error: stockErr } = await supabase.rpc('increment_stock', {
-              p_product_id: item.product_id,
-              p_qty: item.qty,
-            });
-            if (stockErr) console.error('[stock] increment error:', stockErr);
-          }
-        }
-      }
-    }
+    updated = notesOrder;
   }
 
-  // Try update — if it fails due to missing columns, retry with only core fields
-  let updated, updateErr;
-
-  ({ data: updated, error: updateErr } = await supabase
-    .from('orders')
-    .update(updates)
-    .eq('order_code', orderCode)
-    .select()
-    .single());
-
-  // Retry without optional timestamp/reason columns if they don't exist yet
-  if (updateErr) {
-    const errMsg = (updateErr.message || '').toLowerCase();
-    const isColumnError = errMsg.includes('column') || errMsg.includes('rejected_reason')
-      || errMsg.includes('confirmed_at') || errMsg.includes('rejected_at')
-      || errMsg.includes('cancel_reason') || errMsg.includes('cancelled_at');
-
-    if (isColumnError) {
-      console.warn('[admin/orders/patch] Column missing, retrying with core fields only:', updateErr.message);
-      const coreUpdates = {};
-      if (updates.status) coreUpdates.status = updates.status;
-      if (updates.manager_notes !== undefined) coreUpdates.manager_notes = updates.manager_notes;
-
-      if (Object.keys(coreUpdates).length > 0) {
-        ({ data: updated, error: updateErr } = await supabase
-          .from('orders')
-          .update(coreUpdates)
-          .eq('order_code', orderCode)
-          .select()
-          .single());
+  if (hasStatusChange) {
+    try {
+      updated = await transitionOrderFulfillment(supabase, {
+        orderId: currentOrder.id,
+        newStatus: body.status,
+        rejectedReason: body.rejected_reason?.trim() || null,
+        cancelReason: body.cancel_reason?.trim() || null,
+      });
+    } catch (error) {
+      if (Number(error?.status) >= 500) {
+        console.error('[admin/orders/patch] fulfillment transaction error:', {
+          code: error?.code,
+          message: error?.cause?.message || error?.message,
+        });
       }
+      return json(res, Number(error?.status) || 500, {
+        error: error?.code || 'inventory_transaction_failed',
+        message: error?.message || 'Falha ao atualizar o atendimento do pedido.',
+      });
     }
-  }
-
-  if (updateErr) {
-    console.error('[admin/orders/patch] error:', updateErr);
-    return json(res, 500, {
-      error: 'db_error',
-      message: 'Falha ao atualizar pedido.',
-      detail: updateErr.message || String(updateErr),
-    });
   }
 
   // Fetch items for the response

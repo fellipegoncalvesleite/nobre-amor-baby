@@ -130,7 +130,10 @@ test('catalog resolution ignores client prices and weights', async () => {
               assert.equal(column, 'id');
               assert.deepEqual(ids, ['p1']);
               return {
-                data: [{ id: 'p1', name: 'Body', price_cents: 5000, weight_grams: 200, is_public: true }],
+                data: [{
+                  id: 'p1', name: 'Body', price_cents: 5000, weight_grams: 200,
+                  is_public: true, in_stock: true, stock_count: 10, size_options: [],
+                }],
                 error: null,
               };
             },

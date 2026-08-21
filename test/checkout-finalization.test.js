@@ -249,7 +249,10 @@ test('catalog quantity rejects fractional, negative, unsafe, and absurd values',
           return {
             async in() {
               return {
-                data: [{ id: 'p1', name: 'Body', price_cents: 5000, weight_grams: 200, is_public: true }],
+                data: [{
+                  id: 'p1', name: 'Body', price_cents: 5000, weight_grams: 200,
+                  is_public: true, in_stock: true, stock_count: 10, size_options: [],
+                }],
                 error: null,
               };
             },
@@ -277,7 +280,10 @@ test('unsafe PostgreSQL integer-cent line totals are rejected', async () => {
           return {
             async in() {
               return {
-                data: [{ id: 'p1', name: 'Body', price_cents: 1_500_000_000, weight_grams: 200, is_public: true }],
+                data: [{
+                  id: 'p1', name: 'Body', price_cents: 1_500_000_000, weight_grams: 200,
+                  is_public: true, in_stock: true, stock_count: 10, size_options: [],
+                }],
                 error: null,
               };
             },
@@ -751,6 +757,11 @@ test('initial checkout with existing pending PIX but no artifact returns retryab
       etaText: '1 dia útil',
       source: 'local_fixed',
       destination: { city: 'Divinópolis', uf: 'MG' },
+    }),
+    reserveOrderInventory: async (_supabase, orderId) => ({
+      ...order,
+      id: orderId,
+      inventory_state: 'reserved',
     }),
     ensureOriginalPaymentAttempt: async () => ({
       id: 'original-initial-artifact',

@@ -409,6 +409,10 @@ test('new checkout claims original ledger ownership before provider POST and per
     calculateAuthoritativeShipping: async () => ({
       feeCents: 1000, etaText: '1 dia útil', source: 'local_fixed', destination: { city: 'Divinópolis', uf: 'MG' },
     }),
+    reserveOrderInventory: async (_supabase, orderId) => {
+      calls.push('reserve-inventory');
+      return { ...order, id: orderId, inventory_state: 'reserved' };
+    },
     ensureOriginalPaymentAttempt: async () => {
       calls.push('claim-original');
       return originalAttempt;

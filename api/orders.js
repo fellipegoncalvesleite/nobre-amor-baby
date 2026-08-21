@@ -26,6 +26,7 @@ import {
   CHECKOUT_FINALIZATION_STATE,
   resolvePersistedCheckout,
 } from './_checkoutFinalization.js';
+import { reserveOrderInventory } from './_inventory.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -77,6 +78,35 @@ function normalizeExpiryYear(value) {
   const digits = digitsOnly(value);
   if (digits.length === 2) return `20${digits}`;
   return digits.slice(0, 4);
+}
+
+function checkoutRequestError(message) {
+  const error = new Error(message);
+  error.code = 'invalid_request';
+  error.status = 400;
+  return error;
+}
+
+function validatePaymentDetails(payment, expectedMethod = null) {
+  if (!['pix', 'cartao'].includes(payment?.method)) {
+    throw checkoutRequestError('payment.method deve ser "pix" ou "cartao".');
+  }
+  if (expectedMethod && payment.method !== expectedMethod) {
+    throw checkoutRequestError('payment.method não corresponde ao checkout existente.');
+  }
+  if (payment.method !== 'cartao') return;
+
+  const card = payment.card || {};
+  const number = digitsOnly(card.number);
+  const ccv = digitsOnly(card.ccv);
+  const month = digitsOnly(card.expiryMonth);
+  const year = normalizeExpiryYear(card.expiryYear);
+
+  if (!card.holderName?.trim()) throw checkoutRequestError('payment.card.holderName e obrigatorio.');
+  if (number.length < 13 || number.length > 19) throw checkoutRequestError('payment.card.number e invalido.');
+  if (!month.match(/^(0[1-9]|1[0-2])$/)) throw checkoutRequestError('payment.card.expiryMonth e invalido.');
+  if (!year.match(/^\d{4}$/)) throw checkoutRequestError('payment.card.expiryYear e invalido.');
+  if (ccv.length < 3 || ccv.length > 4) throw checkoutRequestError('payment.card.ccv e invalido.');
 }
 
 function isMissingColumnError(error, columnNames = []) {
@@ -249,6 +279,7 @@ export function createOrdersHandler(overrides = {}) {
     recoverAsaasOrderPayment,
     ensureOriginalPaymentAttempt,
     persistPaymentAttemptIdentity,
+    reserveOrderInventory,
     ...overrides,
   };
 
@@ -283,6 +314,9 @@ export function createOrdersHandler(overrides = {}) {
     }
 
     const supabase = deps.getSupabase();
+    let order = null;
+    let itemRows = null;
+    let resumingPaymentCreation = false;
     const { data: existingOrder, error: existingErr } = await deps.findIdempotentOrder(
       supabase,
       user.id,
@@ -293,137 +327,112 @@ export function createOrdersHandler(overrides = {}) {
       return json(res, 500, { error: 'db_error', message: 'Falha ao verificar repetição do pedido.' });
     }
     if (existingOrder) {
-      return respondToExistingCheckout({
-        supabase,
-        order: existingOrder,
-        res,
-        recoverPayment: deps.recoverAsaasOrderPayment,
-        ensureOriginalPayment: deps.ensureOriginalPaymentAttempt,
-        persistPaymentIdentity: deps.persistPaymentAttemptIdentity,
-      });
-    }
-
-    if (!customer?.name?.trim()) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.name e obrigatorio.' });
-    }
-    if (!customer?.phone?.trim()) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.phone e obrigatorio.' });
-    }
-    if (!normalizeCpfCnpj(customer?.cpfCnpj).match(/^\d{11}$|^\d{14}$/)) {
-      return json(res, 400, { error: 'invalid_request', message: 'customer.cpfCnpj e obrigatorio.' });
-    }
-    if (!Array.isArray(items) || items.length === 0) {
-      return json(res, 400, { error: 'invalid_request', message: 'items e obrigatorio e nao pode estar vazio.' });
-    }
-    if (!['pix', 'cartao'].includes(payment?.method)) {
-      return json(res, 400, { error: 'invalid_request', message: 'payment.method deve ser "pix" ou "cartao".' });
-    }
-
-    if (payment.method === 'cartao') {
-      const card = payment.card || {};
-      const number = digitsOnly(card.number);
-      const ccv = digitsOnly(card.ccv);
-      const month = digitsOnly(card.expiryMonth);
-      const year = normalizeExpiryYear(card.expiryYear);
-
-      if (!card.holderName?.trim()) {
-        return json(res, 400, { error: 'invalid_request', message: 'payment.card.holderName e obrigatorio.' });
-      }
-      if (number.length < 13 || number.length > 19) {
-        return json(res, 400, { error: 'invalid_request', message: 'payment.card.number e invalido.' });
-      }
-      if (!month.match(/^(0[1-9]|1[0-2])$/)) {
-        return json(res, 400, { error: 'invalid_request', message: 'payment.card.expiryMonth e invalido.' });
-      }
-      if (!year.match(/^\d{4}$/)) {
-        return json(res, 400, { error: 'invalid_request', message: 'payment.card.expiryYear e invalido.' });
-      }
-      if (ccv.length < 3 || ccv.length > 4) {
-        return json(res, 400, { error: 'invalid_request', message: 'payment.card.ccv e invalido.' });
-      }
-    }
-
-    let resolvedItems;
-    let subtotalCents;
-    try {
-      ({ resolvedItems, subtotalCents } = await deps.resolveCatalogItems({ supabase, items }));
-    } catch (error) {
-      if (Number(error?.status) >= 500) {
-        console.error('[orders] catalog authority error:', { code: error?.code, message: error?.message });
-      }
-      return json(res, Number(error?.status) || 500, errorBody(error, 'Falha ao validar os produtos do pedido.'));
-    }
-
-    let authoritativeShipping;
-    try {
-      authoritativeShipping = await deps.calculateAuthoritativeShipping({
-        toCep: addr?.cep,
-        resolvedItems,
-      });
-    } catch (error) {
-      if (Number(error?.status) >= 500) {
-        console.error('[orders] shipping authority error:', { code: error?.code, message: error?.message });
-      }
-      return json(res, Number(error?.status) || 500, errorBody(error, 'Falha ao calcular o frete do pedido.'));
-    }
-
-    const shippingFeeCents = authoritativeShipping.feeCents;
-    let totalCents;
-    try {
-      totalCents = addPostgresIntCents(subtotalCents, shippingFeeCents, 'total do pedido');
-    } catch (error) {
-      return json(res, Number(error?.status) || 400, errorBody(error, 'Total do pedido inválido.'));
-    }
-    const orderCode = await deps.generateUniqueOrderCode(supabase);
-    const orderInsert = {
-      order_code: orderCode,
-      status: 'new',
-      user_id: user.id,
-      idempotency_key: idempotencyKey,
-      customer_name: customer.name.trim(),
-      customer_phone: customer.phone.trim(),
-      customer_email: authoritativeEmail,
-      customer_cpf_cnpj: normalizeCpfCnpj(customer.cpfCnpj),
-      customer_message: customer.message?.trim() || null,
-      address_cep: addr?.cep || null,
-      address_street: addr?.street || null,
-      address_number: addr?.number || null,
-      address_complement: addr?.complement || null,
-      address_neighborhood: addr?.neighborhood || null,
-      address_city: authoritativeShipping.destination?.city || addr?.city || null,
-      address_uf: authoritativeShipping.destination?.uf || addr?.uf || null,
-      shipping_fee_cents: shippingFeeCents,
-      shipping_eta_text: authoritativeShipping.etaText || null,
-      shipping_provider: authoritativeShipping.source || null,
-      subtotal_cents: subtotalCents,
-      total_cents: totalCents,
-      payment_method: payment.method,
-      payment_state: 'pending',
-      payment_provider: 'asaas',
-      checkout_finalization_state: CHECKOUT_FINALIZATION_STATE.IN_PROGRESS,
-    };
-
-    let order;
-    let orderErr;
-    ({ data: order, error: orderErr } = await supabase
-      .from('orders')
-      .insert(orderInsert)
-      .select('*')
-      .single());
-
-    if (orderErr?.code === '23505') {
-      const { data: racedOrder, error: racedErr } = await deps.findIdempotentOrder(supabase, user.id, idempotencyKey);
-      if (racedErr) {
-        console.error('[orders] idempotency race lookup error:', racedErr);
-        return json(res, 500, {
-          error: 'db_error',
-          message: 'Falha ao resolver uma tentativa simultânea de checkout.',
+      const inventoryState = existingOrder.inventory_state || 'legacy_untracked';
+      if (['released', 'consumed'].includes(inventoryState)) {
+        return json(res, 409, {
+          error: 'inventory_checkout_terminal',
+          message: 'Este checkout já encerrou seu ciclo de estoque e não pode criar ou recuperar outra cobrança.',
+          orderCode: existingOrder.order_code,
         });
       }
-      if (racedOrder) {
+
+      if (inventoryState === 'unreserved') {
+        if (existingOrder.checkout_finalization_state !== CHECKOUT_FINALIZATION_STATE.IN_PROGRESS) {
+          return json(res, 409, {
+            error: 'inventory_reservation_conflict',
+            message: 'Este checkout não pode reservar estoque no estado atual.',
+            orderCode: existingOrder.order_code,
+          });
+        }
+
+        try {
+          validatePaymentDetails(payment, existingOrder.payment_method);
+        } catch (error) {
+          return json(res, Number(error?.status) || 400, errorBody(error, 'Dados de pagamento inválidos.'));
+        }
+
+        try {
+          order = await deps.reserveOrderInventory(supabase, existingOrder.id);
+        } catch (inventoryErr) {
+          return json(res, Number(inventoryErr?.status) || 500, {
+            error: inventoryErr?.code || 'inventory_transaction_failed',
+            message: inventoryErr?.message || 'Falha ao reservar o estoque do pedido.',
+            orderId: existingOrder.id,
+            orderCode: existingOrder.order_code,
+          });
+        }
+
+        const { data: persistedItems, error: persistedItemsErr } = await supabase
+          .from('order_items')
+          .select('*')
+          .eq('order_id', existingOrder.id)
+          .order('id', { ascending: true });
+        if (persistedItemsErr || !persistedItems?.length) {
+          console.error('[orders] persisted item recovery error:', persistedItemsErr);
+          return json(res, 500, {
+            error: 'db_error',
+            message: 'O estoque foi reservado, mas os itens do checkout não puderam ser recuperados.',
+            orderId: existingOrder.id,
+            orderCode: existingOrder.order_code,
+          });
+        }
+        itemRows = persistedItems;
+        resumingPaymentCreation = true;
+      } else if (
+        inventoryState === 'reserved'
+        && existingOrder.checkout_finalization_state === CHECKOUT_FINALIZATION_STATE.IN_PROGRESS
+      ) {
+        const { data: originalAttempt, error: originalAttemptErr } = await supabase
+          .from('payment_attempts')
+          .select('id')
+          .eq('order_id', existingOrder.id)
+          .eq('attempt_kind', 'original')
+          .maybeSingle();
+        if (originalAttemptErr) {
+          console.error('[orders] original payment resume lookup error:', originalAttemptErr);
+          return json(res, 500, {
+            error: 'db_error',
+            message: 'Falha ao verificar a cobrança do checkout reservado.',
+            orderCode: existingOrder.order_code,
+          });
+        }
+        if (originalAttempt) {
+          return respondToExistingCheckout({
+            supabase,
+            order: existingOrder,
+            res,
+            recoverPayment: deps.recoverAsaasOrderPayment,
+            ensureOriginalPayment: deps.ensureOriginalPaymentAttempt,
+            persistPaymentIdentity: deps.persistPaymentAttemptIdentity,
+          });
+        }
+
+        try {
+          validatePaymentDetails(payment, existingOrder.payment_method);
+        } catch (error) {
+          return json(res, Number(error?.status) || 400, errorBody(error, 'Dados de pagamento inválidos.'));
+        }
+
+        const { data: persistedItems, error: persistedItemsErr } = await supabase
+          .from('order_items')
+          .select('*')
+          .eq('order_id', existingOrder.id)
+          .order('id', { ascending: true });
+        if (persistedItemsErr || !persistedItems?.length) {
+          console.error('[orders] reserved checkout item recovery error:', persistedItemsErr);
+          return json(res, 500, {
+            error: 'db_error',
+            message: 'Os itens do checkout reservado não puderam ser recuperados.',
+            orderCode: existingOrder.order_code,
+          });
+        }
+        order = existingOrder;
+        itemRows = persistedItems;
+        resumingPaymentCreation = true;
+      } else {
         return respondToExistingCheckout({
           supabase,
-          order: racedOrder,
+          order: existingOrder,
           res,
           recoverPayment: deps.recoverAsaasOrderPayment,
           ensureOriginalPayment: deps.ensureOriginalPaymentAttempt,
@@ -432,36 +441,164 @@ export function createOrdersHandler(overrides = {}) {
       }
     }
 
-    if (orderErr || !order) {
-      console.error('[orders] insert order error:', orderErr);
-      return json(res, 500, {
-        error: 'db_error',
-        message: 'Falha ao criar pedido.',
-        detail: orderErr?.message || null,
-      });
+    if (!resumingPaymentCreation) {
+      if (!customer?.name?.trim()) {
+        return json(res, 400, { error: 'invalid_request', message: 'customer.name e obrigatorio.' });
+      }
+      if (!customer?.phone?.trim()) {
+        return json(res, 400, { error: 'invalid_request', message: 'customer.phone e obrigatorio.' });
+      }
+      if (!normalizeCpfCnpj(customer?.cpfCnpj).match(/^\d{11}$|^\d{14}$/)) {
+        return json(res, 400, { error: 'invalid_request', message: 'customer.cpfCnpj e obrigatorio.' });
+      }
+      if (!Array.isArray(items) || items.length === 0) {
+        return json(res, 400, { error: 'invalid_request', message: 'items e obrigatorio e nao pode estar vazio.' });
+      }
+      try {
+        validatePaymentDetails(payment);
+      } catch (error) {
+        return json(res, Number(error?.status) || 400, errorBody(error, 'Dados de pagamento inválidos.'));
+      }
+
+      let resolvedItems;
+      let subtotalCents;
+      try {
+        ({ resolvedItems, subtotalCents } = await deps.resolveCatalogItems({ supabase, items }));
+      } catch (error) {
+        if (Number(error?.status) >= 500) {
+          console.error('[orders] catalog authority error:', { code: error?.code, message: error?.message });
+        }
+        return json(res, Number(error?.status) || 500, errorBody(error, 'Falha ao validar os produtos do pedido.'));
+      }
+
+      let authoritativeShipping;
+      try {
+        authoritativeShipping = await deps.calculateAuthoritativeShipping({
+          toCep: addr?.cep,
+          resolvedItems,
+        });
+      } catch (error) {
+        if (Number(error?.status) >= 500) {
+          console.error('[orders] shipping authority error:', { code: error?.code, message: error?.message });
+        }
+        return json(res, Number(error?.status) || 500, errorBody(error, 'Falha ao calcular o frete do pedido.'));
+      }
+
+      const shippingFeeCents = authoritativeShipping.feeCents;
+      let totalCents;
+      try {
+        totalCents = addPostgresIntCents(subtotalCents, shippingFeeCents, 'total do pedido');
+      } catch (error) {
+        return json(res, Number(error?.status) || 400, errorBody(error, 'Total do pedido inválido.'));
+      }
+      const orderCode = await deps.generateUniqueOrderCode(supabase);
+      const orderInsert = {
+        order_code: orderCode,
+        status: 'new',
+        user_id: user.id,
+        idempotency_key: idempotencyKey,
+        customer_name: customer.name.trim(),
+        customer_phone: customer.phone.trim(),
+        customer_email: authoritativeEmail,
+        customer_cpf_cnpj: normalizeCpfCnpj(customer.cpfCnpj),
+        customer_message: customer.message?.trim() || null,
+        address_cep: addr?.cep || null,
+        address_street: addr?.street || null,
+        address_number: addr?.number || null,
+        address_complement: addr?.complement || null,
+        address_neighborhood: addr?.neighborhood || null,
+        address_city: authoritativeShipping.destination?.city || addr?.city || null,
+        address_uf: authoritativeShipping.destination?.uf || addr?.uf || null,
+        shipping_fee_cents: shippingFeeCents,
+        shipping_eta_text: authoritativeShipping.etaText || null,
+        shipping_provider: authoritativeShipping.source || null,
+        subtotal_cents: subtotalCents,
+        total_cents: totalCents,
+        payment_method: payment.method,
+        payment_state: 'pending',
+        payment_provider: 'asaas',
+        checkout_finalization_state: CHECKOUT_FINALIZATION_STATE.IN_PROGRESS,
+      };
+
+      let orderErr;
+      ({ data: order, error: orderErr } = await supabase
+        .from('orders')
+        .insert(orderInsert)
+        .select('*')
+        .single());
+
+      if (orderErr?.code === '23505') {
+        const { data: racedOrder, error: racedErr } = await deps.findIdempotentOrder(supabase, user.id, idempotencyKey);
+        if (racedErr) {
+          console.error('[orders] idempotency race lookup error:', racedErr);
+          return json(res, 500, {
+            error: 'db_error',
+            message: 'Falha ao resolver uma tentativa simultânea de checkout.',
+          });
+        }
+        if (racedOrder) {
+          return respondToExistingCheckout({
+            supabase,
+            order: racedOrder,
+            res,
+            recoverPayment: deps.recoverAsaasOrderPayment,
+            ensureOriginalPayment: deps.ensureOriginalPaymentAttempt,
+            persistPaymentIdentity: deps.persistPaymentAttemptIdentity,
+          });
+        }
+      }
+
+      if (orderErr || !order) {
+        console.error('[orders] insert order error:', orderErr);
+        return json(res, 500, {
+          error: 'db_error',
+          message: 'Falha ao criar pedido.',
+          detail: orderErr?.message || null,
+        });
+      }
+
+      itemRows = resolvedItems.map((item) => ({
+        order_id: order.id,
+        product_id: item.productId,
+        product_name: item.productName,
+        size: item.size,
+        qty: item.qty,
+        unit_price_cents: item.unitPriceCents,
+        line_total_cents: item.lineTotalCents,
+      }));
+
+      const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
+      if (itemsErr) {
+        console.error('[orders] insert items error:', itemsErr);
+        const { error: cleanupErr } = await supabase.from('orders').delete().eq('id', order.id);
+        if (cleanupErr) console.error('[orders] failed to clean up item-less order:', cleanupErr);
+        return json(res, 500, {
+          error: 'db_error',
+          message: 'Falha ao registrar os itens do pedido.',
+          detail: itemsErr.message || null,
+        });
+      }
+
+      try {
+        order = await deps.reserveOrderInventory(supabase, order.id);
+      } catch (inventoryErr) {
+        if (Number(inventoryErr?.status) >= 500) {
+          console.error('[orders] inventory reservation error:', {
+            code: inventoryErr?.code,
+            message: inventoryErr?.cause?.message || inventoryErr?.message,
+          });
+        }
+        return json(res, Number(inventoryErr?.status) || 500, {
+          error: inventoryErr?.code || 'inventory_transaction_failed',
+          message: inventoryErr?.message || 'Falha ao reservar o estoque do pedido.',
+          orderId: order.id,
+          orderCode: order.order_code,
+        });
+      }
     }
 
-    const itemRows = resolvedItems.map((item) => ({
-      order_id: order.id,
-      product_id: item.productId,
-      product_name: item.productName,
-      size: item.size,
-      qty: item.qty,
-      unit_price_cents: item.unitPriceCents,
-      line_total_cents: item.lineTotalCents,
-    }));
-
-    const { error: itemsErr } = await supabase.from('order_items').insert(itemRows);
-    if (itemsErr) {
-      console.error('[orders] insert items error:', itemsErr);
-      const { error: cleanupErr } = await supabase.from('orders').delete().eq('id', order.id);
-      if (cleanupErr) console.error('[orders] failed to clean up item-less order:', cleanupErr);
-      return json(res, 500, {
-        error: 'db_error',
-        message: 'Falha ao registrar os itens do pedido.',
-        detail: itemsErr.message || null,
-      });
-    }
+    const paymentMethod = order.payment_method || payment.method;
+    const customerDocument = order.customer_cpf_cnpj || normalizeCpfCnpj(customer?.cpfCnpj);
 
     let originalPaymentAttempt;
     try {
@@ -476,15 +613,26 @@ export function createOrdersHandler(overrides = {}) {
       });
     }
 
+    if (originalPaymentAttempt.checkoutClaimCreated === false) {
+      return respondToExistingCheckout({
+        supabase,
+        order,
+        res,
+        recoverPayment: deps.recoverAsaasOrderPayment,
+        ensureOriginalPayment: deps.ensureOriginalPaymentAttempt,
+        persistPaymentIdentity: deps.persistPaymentAttemptIdentity,
+      });
+    }
+
     try {
       const paymentResult = await deps.createAsaasOrderPayment({
         order,
         items: itemRows,
-        paymentMethod: payment.method,
+        paymentMethod,
         requestBaseUrl: getRequestBaseUrl(req),
         requestIp: getRequestIp(req),
-        card: payment.method === 'cartao' ? payment.card : null,
-        customerDocument: normalizeCpfCnpj(customer.cpfCnpj),
+        card: paymentMethod === 'cartao' ? payment.card : null,
+        customerDocument,
       });
 
       try {
@@ -574,7 +722,7 @@ export function createOrdersHandler(overrides = {}) {
       });
     } catch (paymentErr) {
       console.error('[orders] payment creation error:', { code: paymentErr?.code, message: paymentErr?.message });
-      const failedPayment = buildPaymentFailure(payment.method, paymentErr.message || 'Falha ao criar cobranca.');
+      const failedPayment = buildPaymentFailure(paymentMethod, paymentErr.message || 'Falha ao criar cobranca.');
       if (paymentErr?.paymentOutcomeUncertain) {
         try {
           await deps.persistPaymentAttemptIdentity(supabase, originalPaymentAttempt, { state: 'provider_uncertain' });
@@ -600,7 +748,7 @@ export function createOrdersHandler(overrides = {}) {
       }
 
       const paymentFailureUpdate = {
-        payment_method: payment.method,
+        payment_method: paymentMethod,
         payment_provider: 'asaas',
         payment_state: 'failed',
         payment_last_event: failedPayment.lastEvent,

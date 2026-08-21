@@ -246,7 +246,7 @@ export default function AdminOrdersPage() {
                             onKeyDown={(event) => event.stopPropagation()}
                           >
                             <div className="flex items-center justify-center gap-1">
-                              {['confirmed', 'packing', 'shipped'].includes(order.status) && (
+                              {order.status === 'shipped' && (
                                 <button
                                   type="button"
                                   onClick={(event) => markAsDone(event, order.order_code)}

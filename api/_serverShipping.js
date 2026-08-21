@@ -147,7 +147,7 @@ export async function resolveCatalogItems({ supabase, items }) {
   const productIds = [...new Set(requested.map((item) => item.productId))];
   const { data: dbProducts, error } = await supabase
     .from('products')
-    .select('id, name, price_cents, weight_grams, is_public')
+    .select('id, name, price_cents, weight_grams, is_public, in_stock, stock_count, size_options')
     .in('id', productIds);
 
   if (error) {
@@ -155,15 +155,74 @@ export async function resolveCatalogItems({ supabase, items }) {
   }
 
   const productMap = new Map((dbProducts || []).map((product) => [String(product.id), product]));
-  const resolvedItems = requested.map((item) => {
-    const product = productMap.get(item.productId);
-    if (!product || product.is_public === false) {
+  const requestedQtyByProduct = new Map();
+  for (const item of requested) {
+    requestedQtyByProduct.set(
+      item.productId,
+      (requestedQtyByProduct.get(item.productId) || 0) + item.qty,
+    );
+  }
+
+  for (const productId of productIds) {
+    const product = productMap.get(productId);
+    if (!product || product.is_public !== true) {
+      const clientName = requested.find((item) => item.productId === productId)?.clientProductName;
       throw shippingError(
         'invalid_product',
-        `O produto "${item.clientProductName || item.productId}" não está mais disponível.`,
+        `O produto "${clientName || productId}" não está mais disponível.`,
         400,
       );
     }
+
+    const stockCount = Number(product.stock_count);
+    if (
+      typeof product.in_stock !== 'boolean'
+      || !Number.isSafeInteger(stockCount)
+      || stockCount < 0
+      || product.in_stock !== (stockCount > 0)
+      || !Array.isArray(product.size_options)
+      || product.size_options.some((size) => typeof size !== 'string')
+    ) {
+      throw shippingError(
+        'catalog_data_invalid',
+        `Dados de estoque inválidos para o produto ${productId}.`,
+        500,
+      );
+    }
+
+    const requestedQty = requestedQtyByProduct.get(productId);
+    if (!product.in_stock || stockCount === 0) {
+      throw shippingError(
+        'product_out_of_stock',
+        `O produto "${product.name || productId}" está sem estoque.`,
+        409,
+      );
+    }
+    if (!Number.isSafeInteger(requestedQty) || requestedQty > stockCount) {
+      throw shippingError(
+        'insufficient_inventory',
+        `A quantidade solicitada de "${product.name || productId}" excede o estoque disponível.`,
+        409,
+      );
+    }
+
+    if (product.size_options.length > 0) {
+      const hasInvalidSize = requested.some((item) => (
+        item.productId === productId
+        && (!item.size || !product.size_options.includes(item.size))
+      ));
+      if (hasInvalidSize) {
+        throw shippingError(
+          'invalid_product_size',
+          `O tamanho solicitado para "${product.name || productId}" não está disponível.`,
+          400,
+        );
+      }
+    }
+  }
+
+  const resolvedItems = requested.map((item) => {
+    const product = productMap.get(item.productId);
 
     const unitPriceCents = Number(product.price_cents);
     if (!Number.isSafeInteger(unitPriceCents) || unitPriceCents < 0 || unitPriceCents > POSTGRES_INT_MAX) {

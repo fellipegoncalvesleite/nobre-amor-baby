@@ -195,9 +195,6 @@ export default function DebugPage() {
   const [orderSeedResult, setOrderSeedResult] = useState(null);
   const [orderListLoading, setOrderListLoading] = useState(false);
   const [orderListResult, setOrderListResult] = useState(null);
-  const [orderResetLoading, setOrderResetLoading] = useState(false);
-  const [orderResetResult, setOrderResetResult] = useState(null);
-  const [resetOrderCode, setResetOrderCode] = useState('');
 
   // Current packing calculation (reactive)
   const currentPkg = useMemo(
@@ -1508,42 +1505,6 @@ export default function DebugPage() {
               </Link>
             </div>
 
-            {/* Reset order status to new */}
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <input
-                type="text"
-                value={resetOrderCode}
-                onChange={(e) => setResetOrderCode(e.target.value)}
-                placeholder="NA-XXXXXXXX-XXXXXX"
-                className={`px-3 py-1 rounded-lg border border-baby-text/15 bg-surface font-mono text-xs text-baby-text placeholder-baby-text/30 w-52 ${focusRing}`}
-              />
-              <button
-                type="button"
-                disabled={orderResetLoading || !resetOrderCode.trim()}
-                onClick={async () => {
-                  setOrderResetLoading(true);
-                  setOrderResetResult(null);
-                  try {
-                    const res = await fetch(`/api/admin?resource=orders&id=${encodeURIComponent(resetOrderCode.trim())}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
-                      body: JSON.stringify({ status: 'new' }),
-                    });
-                    const data = await res.json();
-                    setOrderResetResult({ ok: res.ok, status: res.status, data });
-                    if (res.ok) toast('Status resetado para Novo ✅', { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
-                  } catch (err) {
-                    setOrderResetResult({ ok: false, error: err.message });
-                  } finally {
-                    setOrderResetLoading(false);
-                  }
-                }}
-                className={`${miniBtn} bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 disabled:opacity-40`}
-              >
-                {orderResetLoading ? 'Resetando…' : 'Reset status → new'}
-              </button>
-            </div>
-
             {/* Seed result */}
             {orderSeedResult && (
               <details open className="mb-3">
@@ -1568,17 +1529,6 @@ export default function DebugPage() {
               </details>
             )}
 
-            {/* Reset result */}
-            {orderResetResult && (
-              <details open>
-                <summary className="cursor-pointer font-sans text-xs text-baby-text/50 hover:text-baby-text/70 transition-colors">
-                  Resultado reset ({orderResetResult.ok ? '✅ OK' : '❌ Erro'})
-                </summary>
-                <pre className="mt-2 bg-baby-cream rounded-xl p-3 font-mono text-[11px] text-baby-text/60 overflow-auto max-h-40 whitespace-pre-wrap">
-                  {JSON.stringify(orderResetResult, null, 2)}
-                </pre>
-              </details>
-            )}
           </div>
 
           {/* Note */}

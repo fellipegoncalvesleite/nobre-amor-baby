@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   FiArrowLeft,
@@ -10,6 +10,7 @@ import {
   FiPackage,
   FiPhone,
   FiRefreshCw,
+  FiSlash,
   FiTruck,
   FiUser,
   FiX,
@@ -17,12 +18,11 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { btnPrimary, btnSecondary, focusRing, formatPrice } from '../lib/ui';
-import { getFulfillmentStatus, getPaymentMethodLabel, getPaymentStatus } from '../lib/orderStatus';
+import { getAdminFulfillmentActions, getFulfillmentStatus, getPaymentMethodLabel, getPaymentStatus } from '../lib/orderStatus';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
 export default function AdminOrderDetailPage() {
-  const navigate = useNavigate();
   const { orderCode } = useParams();
   const { accessToken } = useAuth();
   const [order, setOrder] = useState(null);
@@ -77,9 +77,9 @@ export default function AdminOrderDetailPage() {
   const handleConfirm = async () => {
     setActionLoading(true);
     try {
-      await patchOrder({ status: 'confirmed' });
+      const updated = await patchOrder({ status: 'confirmed' });
+      setOrder(updated);
       toast.success('Pedido confirmado!', { style: toastStyle });
-      navigate('/admin/pedidos');
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -94,9 +94,10 @@ export default function AdminOrderDetailPage() {
     }
     setActionLoading(true);
     try {
-      await patchOrder({ status: 'rejected', rejected_reason: rejectReason.trim() });
+      const updated = await patchOrder({ status: 'rejected', rejected_reason: rejectReason.trim() });
+      setOrder(updated);
+      setRejectModalOpen(false);
       toast.success('Pedido recusado.', { style: toastStyle });
-      navigate('/admin/pedidos');
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -104,14 +105,27 @@ export default function AdminOrderDetailPage() {
     }
   };
 
-  const handleResetToNew = async () => {
+  const handleAdvance = async (status, successMessage) => {
     setActionLoading(true);
     try {
-      const updated = await patchOrder({ status: 'new' });
+      const updated = await patchOrder({ status });
       setOrder(updated);
-      setNotesText(updated.manager_notes || '');
-      setNotesDirty(false);
-      toast.success('Status resetado para Novo.', { style: toastStyle });
+      toast.success(successMessage, { style: toastStyle });
+    } catch (err) {
+      toast.error(err.message, { style: toastStyle });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    const reason = window.prompt('Informe o motivo do cancelamento:')?.trim();
+    if (!reason) return;
+    setActionLoading(true);
+    try {
+      const updated = await patchOrder({ status: 'cancelled', cancel_reason: reason });
+      setOrder(updated);
+      toast.success('Pedido cancelado.', { style: toastStyle });
     } catch (err) {
       toast.error(err.message, { style: toastStyle });
     } finally {
@@ -147,6 +161,7 @@ export default function AdminOrderDetailPage() {
 
   const fulfillment = useMemo(() => getFulfillmentStatus(order?.status), [order?.status]);
   const paymentStatus = useMemo(() => getPaymentStatus(order?.payment_state), [order?.payment_state]);
+  const fulfillmentActions = useMemo(() => getAdminFulfillmentActions(order?.status), [order?.status]);
 
   if (loading) {
     return (
@@ -232,36 +247,68 @@ export default function AdminOrderDetailPage() {
               )}
 
               <div className="flex flex-wrap gap-2">
-                <button
+                {fulfillmentActions.some((action) => action.status === 'confirmed') && <button
                   type="button"
                   onClick={handleConfirm}
-                  disabled={actionLoading || order.status === 'confirmed'}
+                  disabled={actionLoading}
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-green-100 text-green-700 hover:bg-green-200 font-sans text-sm font-medium disabled:opacity-50 ${focusRing}`}
                 >
                   <FiCheck size={15} />
-                  {order.status === 'confirmed' ? 'Já confirmado' : 'Confirmar pedido'}
-                </button>
+                  Confirmar pedido
+                </button>}
 
-                <button
+                {fulfillmentActions.some((action) => action.status === 'rejected') && <button
                   type="button"
                   onClick={() => setRejectModalOpen(true)}
-                  disabled={actionLoading || order.status === 'rejected'}
+                  disabled={actionLoading}
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-red-100 text-red-700 hover:bg-red-200 font-sans text-sm font-medium disabled:opacity-50 ${focusRing}`}
                 >
                   <FiX size={15} />
-                  {order.status === 'rejected' ? 'Já recusado' : 'Recusar pedido'}
-                </button>
+                  Recusar pedido
+                </button>}
 
-                {(order.status === 'confirmed' || order.status === 'rejected') && (
-                  <button
-                    type="button"
-                    onClick={handleResetToNew}
-                    disabled={actionLoading}
-                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 font-sans text-sm font-medium disabled:opacity-50 ${focusRing}`}
-                  >
-                    <FiRefreshCw size={14} />
-                    Resetar para Novo
-                  </button>
+                {fulfillmentActions.some((action) => action.status === 'packing') && <button
+                  type="button"
+                  onClick={() => handleAdvance('packing', 'Embalagem iniciada.')}
+                  disabled={actionLoading}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-yellow-100 text-yellow-700 hover:bg-yellow-200 font-sans text-sm font-medium disabled:opacity-50 ${focusRing}`}
+                >
+                  <FiPackage size={15} />
+                  Iniciar embalagem
+                </button>}
+
+                {fulfillmentActions.some((action) => action.status === 'shipped') && <button
+                  type="button"
+                  onClick={() => handleAdvance('shipped', 'Pedido marcado como enviado.')}
+                  disabled={actionLoading}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-purple-100 text-purple-700 hover:bg-purple-200 font-sans text-sm font-medium disabled:opacity-50 ${focusRing}`}
+                >
+                  <FiTruck size={15} />
+                  Marcar como enviado
+                </button>}
+
+                {fulfillmentActions.some((action) => action.status === 'done') && <button
+                  type="button"
+                  onClick={() => handleAdvance('done', 'Pedido marcado como entregue.')}
+                  disabled={actionLoading}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-green-100 text-green-700 hover:bg-green-200 font-sans text-sm font-medium disabled:opacity-50 ${focusRing}`}
+                >
+                  <FiCheck size={15} />
+                  Marcar como entregue
+                </button>}
+
+                {fulfillmentActions.some((action) => action.status === 'cancelled') && <button
+                  type="button"
+                  onClick={handleCancel}
+                  disabled={actionLoading}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-orange-100 text-orange-700 hover:bg-orange-200 font-sans text-sm font-medium disabled:opacity-50 ${focusRing}`}
+                >
+                  <FiSlash size={15} />
+                  Cancelar pedido
+                </button>}
+
+                {fulfillmentActions.length === 0 && (
+                  <p className="font-sans text-sm text-baby-text/50">Este pedido não possui novas ações de atendimento.</p>
                 )}
               </div>
             </Card>
