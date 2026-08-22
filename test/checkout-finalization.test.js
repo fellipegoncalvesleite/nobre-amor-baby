@@ -361,6 +361,7 @@ test('completed same-key handler replay never creates another provider payment',
     payment_state: 'pending',
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => ({}),
@@ -395,6 +396,7 @@ test('in-progress same-key handler request returns 409 and never creates payment
     payment_state: 'pending',
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => ({}),
@@ -426,6 +428,7 @@ test('23505 race resolving to in-progress row returns 409 and never creates paym
     payment_state: 'pending',
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => createInsertOnlySupabase({ data: null, error: { code: '23505', message: 'duplicate key' } }),
@@ -744,6 +747,7 @@ test('initial checkout with existing pending PIX but no artifact returns retryab
     },
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
@@ -835,6 +839,7 @@ test('same checkout key after PIX artifact failure recovers the existing charge 
     },
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,

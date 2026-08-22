@@ -199,6 +199,7 @@ function checkoutHarness({ reserveError = null, claimCreated = true } = {}) {
     },
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
@@ -567,6 +568,7 @@ test('same-key unreserved checkout retries reservation and creates payment only 
     },
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
@@ -656,6 +658,7 @@ test('same-key reserved checkout resumes provider creation only when no original
     },
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,
@@ -688,6 +691,7 @@ test('same-key reserved checkout resumes provider creation only when no original
 test('same-key released checkout is terminal and never recovers or creates payment', async () => {
   let providerCalls = 0;
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => ({}),
@@ -744,6 +748,7 @@ test('public cancellation uses fulfillment transaction without fabricating payme
     method: 'POST',
     body: { orderCode: order.order_code, reason: 'Cliente desistiu' },
   }, res, supabase, {
+    consumeRateLimits: async () => ({ allowed: true }),
     requireAccess: async () => ({ user: { id: 'user-1' } }),
     transition: async (_supabase, input) => {
       transitions.push(input);

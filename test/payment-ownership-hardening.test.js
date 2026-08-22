@@ -398,6 +398,7 @@ test('new checkout claims original ledger ownership before provider POST and per
     provider_payment_id: null,
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     hasOpenOrderClosure: async () => null,
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => supabase,

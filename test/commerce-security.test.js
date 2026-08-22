@@ -208,13 +208,15 @@ test('retry-payment authorization gate precedes payment-attempt or provider side
   const start = source.indexOf('async function handleRetryPayment');
   const end = source.indexOf('async function handleProfile', start);
   const retrySource = source.slice(start, end);
-  const authIndex = retrySource.indexOf('requireOrderAccess(req, res, order)');
+  const authIndex = retrySource.indexOf('requireAccess(req, res, order)');
+  const rateLimitIndex = retrySource.indexOf('enforceRateLimits(supabase');
   const attemptIndex = retrySource.indexOf('findRetryPaymentAttempt(supabase, order.id, attemptKey)');
   const orchestrationIndex = retrySource.indexOf('executePaymentRetry({');
 
   assert.ok(authIndex >= 0, 'retry-payment must authenticate/authorize the order');
-  assert.ok(attemptIndex > authIndex, 'payment attempt lookup/claim must happen only after authorization');
-  assert.ok(orchestrationIndex > authIndex, 'provider retry orchestration must happen only after authorization');
+  assert.ok(rateLimitIndex > authIndex, 'rate limiting must happen only after ownership authorization');
+  assert.ok(attemptIndex > rateLimitIndex, 'payment attempt lookup/claim must happen only after rate limiting');
+  assert.ok(orchestrationIndex > rateLimitIndex, 'provider retry orchestration must happen only after rate limiting');
 });
 
 test('payment retry migration enforces persisted uniqueness and RLS', async () => {

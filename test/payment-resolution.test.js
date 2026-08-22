@@ -259,6 +259,7 @@ test('public cancellation returns 202 and starts durable resolution when fulfill
     method: 'POST',
     body: { orderCode: order.order_code, reason: 'Cliente desistiu' },
   }, res, supabase, {
+    consumeRateLimits: async () => ({ allowed: true }),
     requireAccess: async () => ({ user: { id: 'user-1' } }),
     transition: async () => { throw inventoryResolutionError(); },
     requestClosure: async (_supabase, input) => {
@@ -317,6 +318,7 @@ test('public repeated cancellation reuses the pending cancellation closure and r
     method: 'POST',
     body: { orderCode: order.order_code, reason: 'Cliente desistiu' },
   }, res, supabase, {
+    consumeRateLimits: async () => ({ allowed: true }),
     requireAccess: async () => ({ user: { id: 'user-1' } }),
     transition: async () => { throw closureInProgressError(); },
     requestClosure: async (_supabase, input) => {
@@ -606,6 +608,7 @@ test('same-key checkout replay with an open closure returns conflict before prov
     checkout_finalization_state: 'finalized',
   };
   const handler = createOrdersHandler({
+    consumeRateLimits: async () => ({ allowed: true }),
     verifyUser: async () => ({ user: { id: 'user-1', email: 'cliente@example.test' } }),
     getSupabase: () => ({}),
     findIdempotentOrder: async () => ({ data: existingOrder, error: null }),

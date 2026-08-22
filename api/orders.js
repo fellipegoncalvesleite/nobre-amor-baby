@@ -28,6 +28,13 @@ import {
 } from './_checkoutFinalization.js';
 import { reserveOrderInventory } from './_inventory.js';
 import { hasOpenOrderClosure } from './_paymentResolution.js';
+import {
+  buildGlobalRule,
+  buildIpRule,
+  consumeRateLimits,
+  respondRateLimited,
+  respondRateLimitUnavailable,
+} from './_rateLimit.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -282,6 +289,7 @@ export function createOrdersHandler(overrides = {}) {
     persistPaymentAttemptIdentity,
     reserveOrderInventory,
     hasOpenOrderClosure,
+    consumeRateLimits,
     ...overrides,
   };
 
@@ -316,6 +324,19 @@ export function createOrdersHandler(overrides = {}) {
     }
 
     const supabase = deps.getSupabase();
+    let rateLimit;
+    try {
+      rateLimit = await deps.consumeRateLimits(supabase, [
+        { scope: 'checkout:user', kind: 'user', subject: user.id, limit: 12, windowSeconds: 600 },
+        buildIpRule(req, { scope: 'checkout:ip', limit: 30, windowSeconds: 600 }),
+        buildGlobalRule({ scope: 'checkout:global', limit: 500, windowSeconds: 600 }),
+      ]);
+    } catch (error) {
+      console.error('[orders] rate limiter unavailable:', error?.code || 'rate_limit_unavailable');
+      return respondRateLimitUnavailable(res);
+    }
+    if (!rateLimit.allowed) return respondRateLimited(res, rateLimit);
+
     let order = null;
     let itemRows = null;
     let resumingPaymentCreation = false;

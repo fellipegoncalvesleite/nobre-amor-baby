@@ -15,6 +15,13 @@ import {
 } from './_paymentLedger.js';
 import { transitionOrderFulfillment } from './_inventory.js';
 import { hasOpenOrderClosure, requestOrderClosure } from './_paymentResolution.js';
+import {
+  buildGlobalRule,
+  buildIpRule,
+  consumeRateLimits,
+  respondRateLimited,
+  respondRateLimitUnavailable,
+} from './_rateLimit.js';
 
 function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -407,6 +414,7 @@ export async function handleCancelOrder(req, res, supabase, overrides = {}) {
   const requireAccess = overrides.requireAccess || requireOrderAccess;
   const transition = overrides.transition || transitionOrderFulfillment;
   const requestClosure = overrides.requestClosure || requestOrderClosure;
+  const enforceRateLimits = overrides.consumeRateLimits || consumeRateLimits;
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
   }
@@ -428,6 +436,19 @@ export async function handleCancelOrder(req, res, supabase, overrides = {}) {
   if (!order) return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
   const auth = await requireAccess(req, res, order);
   if (!auth) return null;
+
+  let rateLimit;
+  try {
+    rateLimit = await enforceRateLimits(supabase, [
+      { scope: 'cancel-order:user', kind: 'user', subject: auth.user.id, limit: 8, windowSeconds: 600 },
+      buildIpRule(req, { scope: 'cancel-order:ip', limit: 20, windowSeconds: 600 }),
+      buildGlobalRule({ scope: 'cancel-order:global', limit: 300, windowSeconds: 600 }),
+    ]);
+  } catch (error) {
+    console.error('[public/cancel-order] rate limiter unavailable:', error?.code || 'rate_limit_unavailable');
+    return respondRateLimitUnavailable(res);
+  }
+  if (!rateLimit.allowed) return respondRateLimited(res, rateLimit);
 
   if (order.status !== 'new') {
     return json(res, 400, { error: 'cannot_cancel', message: 'Este pedido já entrou em processamento e não pode mais ser cancelado.' });
@@ -559,7 +580,9 @@ async function persistRetryPayment(supabase, { order, attempt, paymentResult, ac
   }
 }
 
-async function handleRetryPayment(req, res, supabase) {
+export async function handleRetryPayment(req, res, supabase, overrides = {}) {
+  const requireAccess = overrides.requireAccess || requireOrderAccess;
+  const enforceRateLimits = overrides.consumeRateLimits || consumeRateLimits;
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
   }
@@ -583,8 +606,22 @@ async function handleRetryPayment(req, res, supabase) {
     return json(res, 500, { error: 'db_error', message: 'Erro ao buscar pedido.' });
   }
   if (!order) return json(res, 404, { error: 'not_found', message: 'Pedido não encontrado.' });
-  const auth = await requireOrderAccess(req, res, order);
+  const auth = await requireAccess(req, res, order);
   if (!auth) return null;
+
+  let rateLimit;
+  try {
+    rateLimit = await enforceRateLimits(supabase, [
+      { scope: 'retry-payment:user', kind: 'user', subject: auth.user.id, limit: 8, windowSeconds: 600 },
+      buildIpRule(req, { scope: 'retry-payment:ip', limit: 20, windowSeconds: 600 }),
+      buildGlobalRule({ scope: 'retry-payment:global', limit: 300, windowSeconds: 600 }),
+    ]);
+  } catch (error) {
+    console.error('[public/retry-payment] rate limiter unavailable:', error?.code || 'rate_limit_unavailable');
+    return respondRateLimitUnavailable(res);
+  }
+  if (!rateLimit.allowed) return respondRateLimited(res, rateLimit);
+
   if (order.status !== 'new') {
     return json(res, 400, { error: 'invalid_status', message: 'A cobrança só pode ser recriada para pedidos novos.' });
   }
