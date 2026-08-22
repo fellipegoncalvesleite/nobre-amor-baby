@@ -457,6 +457,28 @@ test('admin conflicting closure target returns 409 instead of 500', async (t) =>
   assert.equal(harness.requests.filter((request) => request.url.includes('/rpc/request_order_closure')).length, 1);
 });
 
+test('admin closure race returns semantic 409 instead of 500 and stops before follow-up resolution work', async (t) => {
+  const order = {
+    id: '11111111-1111-1111-1111-111111111204',
+    order_code: 'NA-CLOSURE-STALE',
+    status: 'confirmed',
+    payment_state: 'paid',
+    inventory_state: 'reserved',
+  };
+  const harness = await createAdminClosureHarness(t, {
+    order,
+    transitionError: { code: 'P0001', message: 'inventory_release_requires_payment_resolution' },
+    closureError: { code: 'P0001', message: 'invalid_closure_transition' },
+  });
+  const res = await harness.patch({ status: 'cancelled', cancel_reason: 'Cliente desistiu' });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, 'invalid_closure_transition');
+  assert.equal(res.body.message, 'O pedido mudou de status antes da conclusão do encerramento. Atualize os dados e tente novamente.');
+  assert.equal(harness.requests.filter((request) => request.url.includes('/rpc/request_order_closure')).length, 1);
+  assert.equal(harness.requests.filter((request) => request.url.includes('/rpc/ensure_payment_resolution_action')).length, 0);
+});
+
 test('fulfillment wrapper sends only server-authoritative transition inputs', async () => {
   const { transitionOrderFulfillment } = await import('../api/_inventory.js');
   let call;

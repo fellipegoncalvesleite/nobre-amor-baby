@@ -486,6 +486,12 @@ export async function handleCancelOrder(req, res, supabase, overrides = {}) {
           });
         }
       } catch (resolutionError) {
+        if (resolutionError?.code === 'invalid_closure_transition') {
+          return json(res, 409, {
+            error: 'invalid_closure_transition',
+            message: 'O pedido mudou de status antes da conclusão do encerramento. Atualize os dados e tente novamente.',
+          });
+        }
         if (Number(resolutionError?.status) >= 500 || !resolutionError?.status) {
           console.error('[public/cancel-order] payment resolution error:', {
             code: resolutionError?.code,

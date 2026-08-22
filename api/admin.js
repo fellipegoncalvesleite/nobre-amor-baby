@@ -272,6 +272,12 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
             });
           }
         } catch (resolutionError) {
+          if (resolutionError?.code === 'invalid_closure_transition') {
+            return json(res, 409, {
+              error: 'invalid_closure_transition',
+              message: 'O pedido mudou de status antes da conclusão do encerramento. Atualize os dados e tente novamente.',
+            });
+          }
           if (resolutionError?.code === 'order_closure_conflict' || String(resolutionError?.message || '').includes('order_closure_conflict')) {
             return json(res, 409, {
               error: 'order_closure_conflict',

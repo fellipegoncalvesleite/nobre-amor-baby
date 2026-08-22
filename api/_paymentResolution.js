@@ -18,6 +18,27 @@ function dbError(error, fallbackCode = 'payment_resolution_db_error') {
   return wrapped;
 }
 
+function closureRequestRpcError(error) {
+  const semanticText = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
+  if (semanticText.includes('invalid_closure_transition')) {
+    const wrapped = new Error('O pedido mudou de status antes da conclusão do encerramento. Atualize os dados e tente novamente.');
+    wrapped.code = 'invalid_closure_transition';
+    wrapped.status = 409;
+    wrapped.details = error?.details;
+    wrapped.hint = error?.hint;
+    return wrapped;
+  }
+  if (semanticText.includes('order_closure_conflict')) {
+    const wrapped = new Error('Este pedido já possui um processo de cancelamento ou recusa com outro destino.');
+    wrapped.code = 'order_closure_conflict';
+    wrapped.status = 409;
+    wrapped.details = error?.details;
+    wrapped.hint = error?.hint;
+    return wrapped;
+  }
+  return dbError(error);
+}
+
 function isAmbiguousProviderError(error) {
   const status = Number(error?.status);
   return Boolean(error?.asaasTransportFailure || status === 408 || status >= 500);
@@ -168,7 +189,7 @@ async function requestClosureRow(supabase, { orderId, targetStatus, reason }) {
     p_target_status: targetStatus,
     p_reason: reason,
   });
-  if (error) throw dbError(error);
+  if (error) throw closureRequestRpcError(error);
   const closure = rpcRow(data);
   if (!closure) throw dbError({ message: 'order closure RPC returned no row' });
   return closure;

@@ -221,6 +221,104 @@ function createResolutionMemorySupabase({ order, attempts = [], actions = [], cl
   return api;
 }
 
+test('invalid closure transition maps to semantic 409 before follow-up work', async () => {
+  const { requestOrderClosure } = await import('../api/_paymentResolution.js');
+  const rpcCalls = [];
+  let tableCalls = 0;
+  let requestCalls = 0;
+  const supabase = {
+    async rpc(name) {
+      rpcCalls.push(name);
+      if (name === 'request_order_closure') {
+        return { data: null, error: { code: 'P0001', message: 'invalid_closure_transition' } };
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
+    from(table) {
+      tableCalls += 1;
+      throw new Error(`unexpected table access ${table}`);
+    },
+  };
+
+  await assert.rejects(
+    requestOrderClosure(supabase, {
+      order: { id: 'order-stale', total_cents: 1000, status: 'new' },
+      targetStatus: 'rejected',
+      reason: 'Pagamento recusado',
+      requestImpl: async () => { requestCalls += 1; },
+    }),
+    (error) => error.code === 'invalid_closure_transition' && error.status === 409,
+  );
+
+  assert.deepEqual(rpcCalls, ['request_order_closure']);
+  assert.equal(tableCalls, 0);
+  assert.equal(requestCalls, 0);
+});
+
+test('order closure conflict maps to semantic 409 at the closure RPC boundary', async () => {
+  const { requestOrderClosure } = await import('../api/_paymentResolution.js');
+  const supabase = {
+    async rpc(name) {
+      assert.equal(name, 'request_order_closure');
+      return { data: null, error: { code: 'P0001', message: 'order_closure_conflict' } };
+    },
+    from(table) { throw new Error(`unexpected table access ${table}`); },
+  };
+
+  await assert.rejects(
+    requestOrderClosure(supabase, {
+      order: { id: 'order-conflict', total_cents: 1000, status: 'new' },
+      targetStatus: 'rejected',
+      reason: 'Pagamento recusado',
+    }),
+    (error) => error.code === 'order_closure_conflict' && error.status === 409,
+  );
+});
+
+test('public cancellation returns semantic 409 when authoritative closure eligibility is stale', async () => {
+  const order = {
+    id: 'order-stale-public',
+    order_code: 'NA-STALE-PUBLIC',
+    user_id: 'user-1',
+    customer_email: 'cliente@example.test',
+    status: 'new',
+    payment_state: 'paid',
+    inventory_state: 'reserved',
+  };
+  const supabase = {
+    from(table) {
+      assert.equal(table, 'orders');
+      return {
+        select() {
+          return {
+            eq() {
+              return { async maybeSingle() { return { data: order, error: null }; } };
+            },
+          };
+        },
+      };
+    },
+  };
+  const res = createMockResponse();
+  const staleError = new Error('invalid_closure_transition');
+  staleError.code = 'invalid_closure_transition';
+  staleError.status = 409;
+
+  await handleCancelOrder({
+    method: 'POST',
+    body: { orderCode: order.order_code, reason: 'Cliente desistiu' },
+  }, res, supabase, {
+    consumeRateLimits: async () => ({ allowed: true }),
+    requireAccess: async () => ({ user: { id: 'user-1' } }),
+    transition: async () => { throw inventoryResolutionError(); },
+    requestClosure: async () => { throw staleError; },
+  });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, 'invalid_closure_transition');
+  assert.equal(res.body.message, 'O pedido mudou de status antes da conclusão do encerramento. Atualize os dados e tente novamente.');
+});
+
 test('refund requested and refund-in-progress are not terminal refunded states', () => {
   assert.equal(mapAsaasStatusToPaymentState('REFUND_REQUESTED'), 'paid');
   assert.equal(mapAsaasEventToPaymentState('PAYMENT_REFUND_REQUESTED'), 'paid');

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MIGRATION = join(ROOT, 'supabase/migration_019_provider_payment_resolution.sql');
+const MIGRATION_022 = join(ROOT, 'supabase/migration_022_order_closure_transition_guard.sql');
 const SUPABASE_BOOTSTRAP = join(ROOT, 'test/fixtures/postgres-supabase-bootstrap.sql');
 const BIN = Object.fromEntries(['initdb', 'pg_ctl', 'createdb', 'psql'].map((name) => {
   const binary = String(process.env.PATH || '')
@@ -108,6 +109,7 @@ function ensureAction({ orderId, attemptId, closureId = null, kind = 'order_clos
 before(() => {
   for (const path of Object.values(BIN)) assert.equal(existsSync(path), true, `missing PostgreSQL binary ${path}`);
   assert.equal(existsSync(MIGRATION), true, 'migration 019 must exist before provider-resolution PostgreSQL contracts can pass');
+  assert.equal(existsSync(MIGRATION_022), true, 'migration 022 must exist before closure-transition PostgreSQL contracts can pass');
 
   clusterDir = mkdtempSync(join(tmpdir(), 'nobre-payment-resolution-'));
   dataDir = join(clusterDir, 'data');
@@ -121,7 +123,7 @@ before(() => {
   run(BIN.createdb, ['payment_resolution_test']);
   run(BIN.psql, ['-X', '-v', 'ON_ERROR_STOP=1', '-d', 'payment_resolution_test', '-f', SUPABASE_BOOTSTRAP]);
 
-  for (let number = 1; number <= 19; number += 1) {
+  for (let number = 1; number <= 22; number += 1) {
     const prefix = String(number).padStart(3, '0');
     const migration = readdirSync(join(ROOT, 'supabase'))
       .find((name) => name.startsWith(`migration_${prefix}_`) && name.endsWith('.sql'));
@@ -222,6 +224,136 @@ test('migration 019 creates financial tables with RLS and backend-only RPC privi
   assert.equal(sql("select has_function_privilege('service_role', 'finalize_order_closure_if_resolved(uuid)', 'EXECUTE');"), 't');
 });
 
+test('confirmed order cannot create a new rejected closure', () => {
+  const orderId = '21000000-0000-0000-0000-000000000061';
+  seedOrder({ id: orderId, code: 'NA-INVALID-REJECT', status: 'confirmed', paymentState: 'paid', inventoryState: 'reserved' });
+
+  assert.throws(
+    () => requestClosure(orderId, 'rejected', 'Pagamento recusado'),
+    /invalid_closure_transition/,
+  );
+  assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}';`), '0');
+  assert.equal(sql(`select count(*) from payment_resolution_actions where order_id='${orderId}';`), '0');
+});
+
+test('shipped order cannot create a new cancelled closure', () => {
+  const orderId = '21000000-0000-0000-0000-000000000062';
+  seedOrder({ id: orderId, code: 'NA-INVALID-CANCEL', status: 'shipped', paymentState: 'paid', inventoryState: 'reserved' });
+
+  assert.throws(
+    () => requestClosure(orderId, 'cancelled', 'Cliente desistiu'),
+    /invalid_closure_transition/,
+  );
+  assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}';`), '0');
+  assert.equal(sql(`select count(*) from payment_resolution_actions where order_id='${orderId}';`), '0');
+});
+
+test('migration 022 preserves request closure security, privileges, and order-first lock sequence', () => {
+  assert.equal(sql(`select prosecdef from pg_proc where oid='public.request_order_closure(uuid,text,text)'::regprocedure;`), 't');
+  assert.equal(sql(`select array_to_string(proconfig, ',') from pg_proc where oid='public.request_order_closure(uuid,text,text)'::regprocedure;`), 'search_path=pg_catalog');
+  assert.equal(sql(`select exists (
+    select 1
+    from pg_proc p, lateral aclexplode(p.proacl) acl
+    where p.oid='public.request_order_closure(uuid,text,text)'::regprocedure
+      and acl.grantee=0
+      and acl.privilege_type='EXECUTE'
+  );`), 'f');
+  assert.equal(sql("select has_function_privilege('anon', 'request_order_closure(uuid,text,text)', 'EXECUTE');"), 'f');
+  assert.equal(sql("select has_function_privilege('authenticated', 'request_order_closure(uuid,text,text)', 'EXECUTE');"), 'f');
+  assert.equal(sql("select has_function_privilege('service_role', 'request_order_closure(uuid,text,text)', 'EXECUTE');"), 't');
+
+  const definition = installedFunctionDefinition('public.request_order_closure(uuid,text,text)');
+  const orderLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_order\s+from\s+public\.orders\s+where\s+id\s*=\s*p_order_id\s+for\s+update\s*;/i,
+    'orders FOR UPDATE',
+  );
+  const closureLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_existing\s+from\s+public\.order_closure_requests[\s\S]*?for\s+update\s*;/i,
+    'order_closure_requests FOR UPDATE',
+  );
+  const eligibility = executableFragmentPosition(
+    definition,
+    /invalid_closure_transition/i,
+    'invalid_closure_transition eligibility guard',
+  );
+  const insert = executableFragmentPosition(
+    definition,
+    /insert\s+into\s+public\.order_closure_requests/i,
+    'closure insert',
+  );
+  assert.ok(orderLock < closureLock, 'orders must lock before order_closure_requests');
+  assert.ok(closureLock < eligibility, 'existing closure reuse/conflict must precede new-closure eligibility');
+  assert.ok(eligibility < insert, 'eligibility must be checked before closure insert');
+});
+
+test('new closure eligibility matches the accepted fulfillment graph and rejected creations have no side effects', () => {
+  const allowed = [
+    ['new', 'rejected'],
+    ['new', 'cancelled'],
+    ['confirmed', 'cancelled'],
+    ['packing', 'cancelled'],
+  ];
+  allowed.forEach(([status, target], index) => {
+    const suffix = String(700 + index).padStart(12, '0');
+    const orderId = `21000000-0000-0000-0000-${suffix}`;
+    seedOrder({ id: orderId, code: `NA-ALLOW-${index}`, status, paymentState: 'paid', inventoryState: 'reserved' });
+    assert.match(requestClosure(orderId, target, target === 'rejected' ? 'Pagamento recusado' : 'Cliente desistiu'), new RegExp(`\\|pending\\|${target}$`));
+    assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}';`), '1');
+  });
+
+  const rejected = [
+    ['confirmed', 'rejected'],
+    ['packing', 'rejected'],
+    ['shipped', 'rejected'],
+    ['done', 'rejected'],
+    ['shipped', 'cancelled'],
+    ['done', 'cancelled'],
+    ['rejected', 'cancelled'],
+    ['cancelled', 'rejected'],
+    ['cancelled', 'cancelled'],
+    ['rejected', 'rejected'],
+  ];
+  rejected.forEach(([status, target], index) => {
+    const suffix = String(720 + index).padStart(12, '0');
+    const orderId = `21000000-0000-0000-0000-${suffix}`;
+    seedOrder({ id: orderId, code: `NA-DENY-${index}`, status, paymentState: 'paid', inventoryState: 'reserved' });
+    assert.throws(
+      () => requestClosure(orderId, target, target === 'rejected' ? 'Pagamento recusado' : 'Cliente desistiu'),
+      /invalid_closure_transition/,
+    );
+    assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}';`), '0');
+    assert.equal(sql(`select count(*) from payment_resolution_actions where order_id='${orderId}';`), '0');
+    assert.equal(sql(`select status || '|' || inventory_state from orders where id='${orderId}';`), `${status}|reserved`);
+  });
+});
+
+test('existing closure reuse and conflict remain authoritative before new-transition eligibility', () => {
+  const orderId = '21000000-0000-0000-0000-000000000750';
+  seedOrder({ id: orderId, code: 'NA-LEGACY-CLOSURE', status: 'shipped', paymentState: 'paid', inventoryState: 'reserved' });
+  const closureId = sql(`insert into order_closure_requests (order_id,target_status,reason,state)
+    values ('${orderId}','cancelled','Cliente desistiu','waiting_provider') returning id;`).split('\n')[0];
+
+  assert.equal(requestClosure(orderId, 'cancelled', 'Retry').split('|')[0], closureId);
+  assert.throws(() => requestClosure(orderId, 'rejected', 'Fraude'), /order_closure_conflict/);
+  assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}' and state <> 'completed';`), '1');
+});
+
+test('stale new snapshot cannot create rejected closure after authoritative state becomes confirmed', () => {
+  const orderId = '21000000-0000-0000-0000-000000000751';
+  const attemptId = '31000000-0000-0000-0000-000000000751';
+  seedOrder({ id: orderId, code: 'NA-STALE-SNAPSHOT', status: 'new', paymentState: 'paid', inventoryState: 'reserved' });
+  seedAttempt({ id: attemptId, orderId, key: 'stale-snapshot', state: 'paid', providerPaymentId: 'pay-stale-snapshot', verified: true });
+  sql(`update orders set active_payment_attempt_id='${attemptId}' where id='${orderId}';`);
+  assert.equal(sql(`select status from transition_order_fulfillment('${orderId}','confirmed',null,null);`), 'confirmed');
+
+  assert.throws(() => requestClosure(orderId, 'rejected', 'Pagamento recusado'), /invalid_closure_transition/);
+  assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}';`), '0');
+  assert.equal(sql(`select count(*) from payment_resolution_actions where order_id='${orderId}';`), '0');
+  assert.equal(sql(`select status from orders where id='${orderId}';`), 'confirmed');
+});
+
 test('anon and authenticated cannot mutate resolution tables while service role RPC works', () => {
   const orderId = '21000000-0000-0000-0000-000000000001';
   seedOrder({ id: orderId, code: 'NA-RLS', paymentState: 'failed', inventoryState: 'unreserved' });
@@ -239,6 +371,78 @@ test('concurrent identical closure requests reuse one row and conflicting target
   assert.equal(a.stdout, b.stdout);
   assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}' and state <> 'completed';`), '1');
   assert.throws(() => requestClosure(orderId, 'rejected', 'Fraude'), /order_closure_conflict/);
+});
+
+test('closure creation races packing -> shipped without producing shipped plus open cancelled closure', async () => {
+  const iterations = 20;
+  const lockErrors = /40P01|deadlock detected|55P03|lock timeout|statement timeout|canceling statement due to (?:lock|statement) timeout/i;
+  let closureWins = 0;
+  let shippingWins = 0;
+
+  const transaction = (delaySql, statement) => `begin;
+    set local deadlock_timeout='50ms';
+    set local lock_timeout='1500ms';
+    set local statement_timeout='5s';
+    ${delaySql}
+    ${statement}
+    commit;`;
+
+  for (let index = 0; index < iterations; index += 1) {
+    const suffix = String(800 + index).padStart(12, '0');
+    const orderId = `21000000-0000-0000-0000-${suffix}`;
+    seedOrder({ id: orderId, code: `NA-CLOSURE-SHIP-RACE-${index}`, status: 'packing', paymentState: 'paid', inventoryState: 'reserved' });
+
+    const closureDelay = index % 2 === 0 ? '' : `select pg_sleep(0.01);`;
+    const shippingDelay = index % 2 === 0 ? `select pg_sleep(0.01);` : '';
+    const [closureResult, shippingResult] = await Promise.all([
+      psqlAsync(transaction(
+        closureDelay,
+        `select id from request_order_closure('${orderId}','cancelled','Cliente desistiu');`,
+      )),
+      psqlAsync(transaction(
+        shippingDelay,
+        `select status from transition_order_fulfillment('${orderId}','shipped',null,null);`,
+      )),
+    ]);
+
+    assert.doesNotMatch(closureResult.stderr, lockErrors, `closure request hit a lock failure on iteration ${index}`);
+    assert.doesNotMatch(shippingResult.stderr, lockErrors, `shipping transition hit a lock failure on iteration ${index}`);
+
+    const closureWon = closureResult.code === 0
+      && shippingResult.code === 1
+      && /order_closure_in_progress/.test(shippingResult.stderr);
+    const shippingWon = shippingResult.code === 0
+      && closureResult.code === 1
+      && /invalid_closure_transition/.test(closureResult.stderr);
+    assert.equal(closureWon || shippingWon, true, `unexpected race outcome ${index}: closure=${closureResult.code}/${closureResult.stderr} shipping=${shippingResult.code}/${shippingResult.stderr}`);
+
+    const orderStatus = sql(`select status from orders where id='${orderId}';`);
+    const openClosures = sql(`select count(*) from order_closure_requests where order_id='${orderId}' and state <> 'completed';`);
+    const actions = sql(`select count(*) from payment_resolution_actions where order_id='${orderId}';`);
+    const forbidden = sql(`select exists (
+      select 1
+      from orders o
+      join order_closure_requests c on c.order_id=o.id and c.state <> 'completed'
+      where o.id='${orderId}' and o.status='shipped' and c.target_status='cancelled'
+    );`);
+
+    assert.equal(actions, '0');
+    assert.equal(forbidden, 'f');
+    if (closureWon) {
+      closureWins += 1;
+      assert.equal(orderStatus, 'packing');
+      assert.equal(openClosures, '1');
+      assert.equal(sql(`select target_status from order_closure_requests where order_id='${orderId}' and state <> 'completed';`), 'cancelled');
+    } else {
+      shippingWins += 1;
+      assert.equal(orderStatus, 'shipped');
+      assert.equal(openClosures, '0');
+    }
+  }
+
+  assert.ok(closureWins > 0, 'race must exercise at least one closure-first winner');
+  assert.ok(shippingWins > 0, 'race must exercise at least one shipping-first winner');
+  console.log(`closure race outcomes: closure_wins=${closureWins}, shipping_wins=${shippingWins}, forbidden=0`);
 });
 
 test('concurrent payment-resolution operations avoid deadlocks and preserve one closure/action', async () => {
@@ -371,7 +575,8 @@ test('open cancellation closure blocks new -> confirmed even with verified activ
 test('open cancellation closure blocks shipped -> done in defensive legacy state', () => {
   const orderId = '21000000-0000-0000-0000-000000000053';
   seedOrder({ id: orderId, code: 'NA-FREEZE-DONE', status: 'shipped', paymentState: 'paid', inventoryState: 'reserved' });
-  requestClosure(orderId);
+  sql(`insert into order_closure_requests (order_id,target_status,reason,state)
+       values ('${orderId}','cancelled','Legacy closure','waiting_provider');`);
 
   assert.throws(
     () => sql(`select status from transition_order_fulfillment('${orderId}', 'done', null, null);`),
