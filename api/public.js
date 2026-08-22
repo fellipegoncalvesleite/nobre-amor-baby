@@ -5,6 +5,7 @@
  *   home, products, collections, order, cancel-order, retry-payment, profile, my-orders
  */
 import { getSupabase, verifyUser } from './_supabaseAdmin.js';
+import { applyApiCors } from './_httpSecurity.js';
 import { createAsaasOrderPayment, recoverAsaasOrderPayment, getRequestBaseUrl, isRetryablePaymentState, toPaymentPayload } from './_asaas.js';
 import { executePaymentRetry, normalizePaymentAttemptKey } from './_paymentRetrySafety.js';
 import {
@@ -200,10 +201,10 @@ async function selectMyOrdersByField(supabase, field, value) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (applyApiCors(req, res, {
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })) return;
 
   if (req.method !== 'GET' && req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use GET ou POST.' });

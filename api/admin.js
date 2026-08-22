@@ -15,6 +15,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { applyApiCors } from './_httpSecurity.js';
 import { requireManager } from './_supabaseAdmin.js';
 import { transitionOrderFulfillment } from './_inventory.js';
 import { listPaymentResolutions, reconcilePaymentResolution, requestOrderClosure } from './_paymentResolution.js';
@@ -58,10 +59,10 @@ const ALLOWED_STATUSES = ['new', 'confirmed', 'rejected', 'cancelled', 'packing'
 /* ── handler ─────────────────────────────────────── */
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (applyApiCors(req, res, {
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })) return;
 
   /* ── universal admin authorization boundary ───── */
   const manager = await requireManager(req, res);

@@ -1,4 +1,5 @@
 import { getSupabase } from './_supabaseAdmin.js';
+import { applyApiCors } from './_httpSecurity.js';
 import {
   buildGlobalRule,
   buildIpRule,
@@ -24,10 +25,10 @@ export function createNewsletterHandler(overrides = {}) {
   const deps = { getSupabase, consumeRateLimits, ...overrides };
 
   return async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (applyApiCors(req, res, {
+      methods: ['POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type'],
+    })) return;
 
     if (req.method !== 'POST') {
       return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });

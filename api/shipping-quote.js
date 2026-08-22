@@ -1,4 +1,5 @@
 import { getSupabase } from './_supabaseAdmin.js';
+import { applyApiCors } from './_httpSecurity.js';
 import { calculateAuthoritativeShipping, resolveCatalogItems } from './_serverShipping.js';
 import {
   buildGlobalRule,
@@ -23,12 +24,11 @@ export function createShippingQuoteHandler(overrides = {}) {
   };
 
   return async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (applyApiCors(req, res, {
+      methods: ['POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type'],
+    })) return;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-    if (req.method === 'OPTIONS') return res.status(204).end();
     if (req.method !== 'POST') {
       return jsonResponse(res, 405, {
         error: 'method_not_allowed',

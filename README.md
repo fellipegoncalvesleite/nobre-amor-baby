@@ -40,7 +40,10 @@ ASAAS_API_URL=
 ASAAS_WEBHOOK_TOKEN=
 MELHOR_ENVIO_TOKEN=
 SITE_URL=
+CORS_ALLOWED_ORIGINS=
 ```
+
+`SITE_URL` define a origem canônica da loja. `CORS_ALLOWED_ORIGINS` é opcional e aceita uma lista separada por vírgulas de origens HTTP(S) adicionais e exatas, por exemplo `https://preview.example.com`; curingas como `*` não são aceitos. Requisições servidor-a-servidor sem cabeçalho `Origin` continuam permitidas pelo limite CORS, mas todas as regras existentes de autenticação e autorização continuam obrigatórias.
 
 Copie o arquivo de exemplo, preencha os valores e instale as dependências:
 

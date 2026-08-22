@@ -2,6 +2,7 @@
  * POST /api/orders - authenticated, idempotent order creation in Supabase + Asaas.
  */
 import { getSupabase, verifyUser } from './_supabaseAdmin.js';
+import { applyApiCors } from './_httpSecurity.js';
 import {
   createAsaasOrderPayment,
   recoverAsaasOrderPayment,
@@ -294,10 +295,10 @@ export function createOrdersHandler(overrides = {}) {
   };
 
   return async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.status(204).end();
+    if (applyApiCors(req, res, {
+      methods: ['POST', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    })) return;
 
   if (req.method !== 'POST') {
     return json(res, 405, { error: 'method_not_allowed', message: 'Use POST.' });
