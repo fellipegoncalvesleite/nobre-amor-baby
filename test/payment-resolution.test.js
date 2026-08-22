@@ -28,6 +28,14 @@ function inventoryResolutionError() {
 }
 
 
+function closureInProgressError() {
+  const error = new Error('Este pedido está em processo de cancelamento ou recusa e não pode avançar no atendimento.');
+  error.code = 'order_closure_in_progress';
+  error.status = 409;
+  return error;
+}
+
+
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
@@ -116,6 +124,26 @@ function createResolutionMemorySupabase({ order, attempts = [], actions = [], cl
       };
     },
     async rpc(name, params) {
+      if (name === 'request_order_closure') {
+        let existing = rows.order_closure_requests.find((closure) =>
+          closure.order_id === params.p_order_id && closure.state !== 'completed');
+        if (existing) {
+          if (existing.target_status !== params.p_target_status) {
+            return { data: null, error: { code: 'P0001', message: 'order_closure_conflict' } };
+          }
+          return { data: clone(existing), error: null };
+        }
+        existing = {
+          id: `closure-${rows.order_closure_requests.length + 1}`,
+          order_id: params.p_order_id,
+          target_status: params.p_target_status,
+          reason: params.p_reason,
+          state: 'pending',
+          last_error_code: null,
+        };
+        rows.order_closure_requests.push(existing);
+        return { data: clone(existing), error: null };
+      }
       if (name === 'ensure_payment_resolution_action') {
         let existing = rows.payment_resolution_actions.find((action) =>
           action.payment_attempt_id === params.p_payment_attempt_id
@@ -250,6 +278,132 @@ test('public cancellation returns 202 and starts durable resolution when fulfill
     targetStatus: 'cancelled',
     reason: 'Cliente desistiu',
   });
+});
+
+test('public repeated cancellation reuses the pending cancellation closure and returns 202', async () => {
+  const order = {
+    id: 'order-repeat-cancel',
+    order_code: 'NA-REPEAT-CANCEL',
+    user_id: 'user-1',
+    customer_email: 'cliente@example.test',
+    status: 'new',
+    payment_state: 'paid',
+    inventory_state: 'reserved',
+  };
+  const existingClosure = {
+    id: 'closure-repeat-cancel',
+    order_id: order.id,
+    target_status: 'cancelled',
+    state: 'waiting_provider',
+  };
+  const supabase = {
+    from(table) {
+      assert.equal(table, 'orders');
+      return {
+        select() {
+          return {
+            eq() {
+              return { async maybeSingle() { return { data: order, error: null }; } };
+            },
+          };
+        },
+      };
+    },
+  };
+  const closureCalls = [];
+  const res = createMockResponse();
+
+  await handleCancelOrder({
+    method: 'POST',
+    body: { orderCode: order.order_code, reason: 'Cliente desistiu' },
+  }, res, supabase, {
+    requireAccess: async () => ({ user: { id: 'user-1' } }),
+    transition: async () => { throw closureInProgressError(); },
+    requestClosure: async (_supabase, input) => {
+      closureCalls.push(input);
+      return { resolutionPending: true, closure: existingClosure, order };
+    },
+  });
+
+  assert.equal(res.statusCode, 202);
+  assert.equal(res.body.resolutionPending, true);
+  assert.equal(res.body.closure.id, existingClosure.id);
+  assert.equal(res.body.closure.targetStatus, 'cancelled');
+  assert.equal(closureCalls.length, 1);
+  assert.deepEqual(closureCalls[0], {
+    order,
+    targetStatus: 'cancelled',
+    reason: 'Cliente desistiu',
+  });
+});
+
+test('reusing a pending cancellation closure does not initiate a duplicate provider refund', async () => {
+  const { requestOrderClosure } = await import('../api/_paymentResolution.js');
+  const order = {
+    id: 'order-repeat-provider',
+    order_code: 'NA-REPEAT-PROVIDER',
+    total_cents: 1000,
+    payment_state: 'paid',
+    payment_method: 'pix',
+    status: 'new',
+    inventory_state: 'reserved',
+  };
+  const attempt = {
+    id: 'attempt-repeat-provider',
+    order_id: order.id,
+    state: 'paid',
+    provider: 'asaas',
+    provider_payment_id: 'pay-repeat-provider',
+    payment_method: 'pix',
+  };
+  const closure = {
+    id: 'closure-repeat-provider',
+    order_id: order.id,
+    target_status: 'cancelled',
+    reason: 'Cliente desistiu',
+    state: 'waiting_provider',
+    last_error_code: null,
+  };
+  const action = {
+    id: 'action-repeat-provider',
+    order_id: order.id,
+    payment_attempt_id: attempt.id,
+    closure_request_id: closure.id,
+    kind: 'order_close_refund',
+    provider_action: 'refund',
+    state: 'provider_pending',
+    provider: 'asaas',
+    provider_payment_id: attempt.provider_payment_id,
+    provider_marker: 'NAB refund action-repeat-provider',
+    last_error_code: null,
+  };
+  const supabase = createResolutionMemorySupabase({
+    order,
+    attempts: [attempt],
+    actions: [action],
+    closures: [closure],
+  });
+  const providerCalls = [];
+
+  const result = await requestOrderClosure(supabase, {
+    order,
+    targetStatus: 'cancelled',
+    reason: 'Cliente desistiu',
+    requestImpl: async (path, options = {}) => {
+      providerCalls.push({ path, options });
+      if (path === `/payments/${attempt.provider_payment_id}/refunds` && !options.method) {
+        return { data: [{ description: action.provider_marker, status: 'PENDING', value: 10 }] };
+      }
+      throw new Error(`unexpected provider mutation ${options.method || 'GET'} ${path}`);
+    },
+  });
+
+  assert.equal(result.resolutionPending, true);
+  assert.equal(result.closure.id, closure.id);
+  assert.equal(supabase.rows.order_closure_requests.length, 1);
+  assert.equal(supabase.rows.payment_resolution_actions.length, 1);
+  assert.equal(providerCalls.length, 1);
+  assert.equal(providerCalls[0].options.method, undefined);
 });
 
 test('additional-paid webhook path delegates to durable payment resolution processing', () => {

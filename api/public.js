@@ -440,7 +440,7 @@ export async function handleCancelOrder(req, res, supabase, overrides = {}) {
       cancelReason: reason.trim(),
     });
   } catch (error) {
-    if (error?.code === 'inventory_release_requires_payment_resolution') {
+    if (['inventory_release_requires_payment_resolution', 'order_closure_in_progress'].includes(error?.code)) {
       try {
         const resolution = await requestClosure(supabase, {
           order,

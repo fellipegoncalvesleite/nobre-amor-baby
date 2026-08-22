@@ -187,6 +187,154 @@ test('duplicate-paid refund action uniqueness reuses one refund action', async (
   assert.equal(sql(`select count(*) from payment_resolution_actions where payment_attempt_id='${attemptId}' and provider_action='refund';`), '1');
 });
 
+test('open cancellation closure blocks confirmed -> packing while refund resolution is provider pending', () => {
+  const productId = '11000000-0000-0000-0000-000000000050';
+  const orderId = '21000000-0000-0000-0000-000000000050';
+  const attemptId = '31000000-0000-0000-0000-000000000050';
+  seedProduct(productId, 0);
+  seedOrder({ id: orderId, code: 'NA-FULFILLMENT-FREEZE', status: 'confirmed', paymentState: 'paid', inventoryState: 'reserved' });
+  seedItem(orderId, productId);
+  seedAttempt({ id: attemptId, orderId, key: 'fulfillment-freeze', state: 'paid', providerPaymentId: 'pay-fulfillment-freeze', verified: true });
+  sql(`update orders set active_payment_attempt_id='${attemptId}' where id='${orderId}';`);
+  const closureId = requestClosure(orderId).split('|')[0];
+  const actionId = ensureAction({ orderId, attemptId, closureId, providerPaymentId: 'pay-fulfillment-freeze' }).split('|')[0];
+  sql(`update payment_resolution_actions set state='provider_pending' where id='${actionId}';`);
+
+  assert.throws(
+    () => sql(`select status from transition_order_fulfillment('${orderId}', 'packing', null, null);`),
+    /order_closure_in_progress/,
+  );
+  assert.equal(sql(`select status || '|' || payment_state || '|' || inventory_state from orders where id='${orderId}';`), 'confirmed|paid|reserved');
+  assert.equal(sql(`select stock_count from products where id='${productId}';`), '0');
+  assert.equal(sql(`select state from order_closure_requests where id='${closureId}';`), 'pending');
+});
+
+test('open cancellation closure blocks packing -> shipped', () => {
+  const orderId = '21000000-0000-0000-0000-000000000051';
+  seedOrder({ id: orderId, code: 'NA-FREEZE-SHIPPING', status: 'packing', paymentState: 'paid', inventoryState: 'reserved' });
+  const closureId = requestClosure(orderId).split('|')[0];
+  sql(`update order_closure_requests set state='waiting_provider' where id='${closureId}';`);
+
+  assert.throws(
+    () => sql(`select status from transition_order_fulfillment('${orderId}', 'shipped', null, null);`),
+    /order_closure_in_progress/,
+  );
+  assert.equal(sql(`select status from orders where id='${orderId}';`), 'packing');
+});
+
+test('open cancellation closure blocks new -> confirmed even with verified active payment', () => {
+  const orderId = '21000000-0000-0000-0000-000000000052';
+  const attemptId = '31000000-0000-0000-0000-000000000052';
+  seedOrder({ id: orderId, code: 'NA-FREEZE-CONFIRM', status: 'new', paymentState: 'paid', inventoryState: 'reserved' });
+  seedAttempt({ id: attemptId, orderId, key: 'freeze-confirm', state: 'paid', providerPaymentId: 'pay-freeze-confirm', verified: true });
+  sql(`update orders set active_payment_attempt_id='${attemptId}' where id='${orderId}';`);
+  requestClosure(orderId);
+
+  assert.throws(
+    () => sql(`select status from transition_order_fulfillment('${orderId}', 'confirmed', null, null);`),
+    /order_closure_in_progress/,
+  );
+  assert.equal(sql(`select status from orders where id='${orderId}';`), 'new');
+});
+
+test('open cancellation closure blocks shipped -> done in defensive legacy state', () => {
+  const orderId = '21000000-0000-0000-0000-000000000053';
+  seedOrder({ id: orderId, code: 'NA-FREEZE-DONE', status: 'shipped', paymentState: 'paid', inventoryState: 'reserved' });
+  requestClosure(orderId);
+
+  assert.throws(
+    () => sql(`select status from transition_order_fulfillment('${orderId}', 'done', null, null);`),
+    /order_closure_in_progress/,
+  );
+  assert.equal(sql(`select status from orders where id='${orderId}';`), 'shipped');
+});
+
+test('open closure blocks direct cancellation bypass even when inventory release would otherwise be safe', () => {
+  const orderId = '21000000-0000-0000-0000-000000000054';
+  seedOrder({ id: orderId, code: 'NA-FREEZE-CANCEL', status: 'new', paymentState: 'failed', inventoryState: 'reserved' });
+  const closureId = requestClosure(orderId).split('|')[0];
+  sql(`update order_closure_requests set state='waiting_provider' where id='${closureId}';`);
+
+  assert.throws(
+    () => sql(`select status from transition_order_fulfillment('${orderId}', 'cancelled', null, 'Cliente desistiu');`),
+    /order_closure_in_progress/,
+  );
+  assert.equal(sql(`select status || '|' || inventory_state from orders where id='${orderId}';`), 'new|reserved');
+});
+
+test('ready_to_finalize closure allows only its exact target status', () => {
+  const orderId = '21000000-0000-0000-0000-000000000055';
+  seedOrder({ id: orderId, code: 'NA-FREEZE-READY', status: 'confirmed', paymentState: 'paid', inventoryState: 'reserved' });
+  const closureId = requestClosure(orderId).split('|')[0];
+  sql(`update order_closure_requests set state='ready_to_finalize' where id='${closureId}';`);
+
+  assert.throws(
+    () => sql(`select status from transition_order_fulfillment('${orderId}', 'packing', null, null);`),
+    /order_closure_in_progress/,
+  );
+  assert.equal(sql(`select status from orders where id='${orderId}';`), 'confirmed');
+});
+
+test('closure finalizer can cancel a confirmed tracked order and release stock exactly once', () => {
+  const productId = '11000000-0000-0000-0000-000000000056';
+  const orderId = '21000000-0000-0000-0000-000000000056';
+  const attemptId = '31000000-0000-0000-0000-000000000056';
+  seedProduct(productId, 0);
+  seedOrder({ id: orderId, code: 'NA-FINALIZE-CANCEL', status: 'confirmed', paymentState: 'refunded', inventoryState: 'reserved' });
+  seedItem(orderId, productId);
+  seedAttempt({ id: attemptId, orderId, key: 'finalize-cancel', state: 'refunded', providerPaymentId: 'pay-finalize-cancel', verified: false });
+  const closureId = requestClosure(orderId).split('|')[0];
+
+  assert.match(sql(`select status || '|' || payment_state || '|' || inventory_state from finalize_order_closure_if_resolved('${closureId}');`), /cancelled\|refunded\|released/);
+  assert.equal(sql(`select state from order_closure_requests where id='${closureId}';`), 'completed');
+  assert.equal(sql(`select stock_count from products where id='${productId}';`), '1');
+
+  assert.match(sql(`select status || '|' || inventory_state from finalize_order_closure_if_resolved('${closureId}');`), /cancelled\|released/);
+  assert.equal(sql(`select stock_count from products where id='${productId}';`), '1');
+});
+
+test('closure finalizer can reject a new tracked order and release stock exactly once', () => {
+  const productId = '11000000-0000-0000-0000-000000000057';
+  const orderId = '21000000-0000-0000-0000-000000000057';
+  const attemptId = '31000000-0000-0000-0000-000000000057';
+  seedProduct(productId, 0);
+  seedOrder({ id: orderId, code: 'NA-FINALIZE-REJECT', status: 'new', paymentState: 'refunded', inventoryState: 'reserved' });
+  seedItem(orderId, productId);
+  seedAttempt({ id: attemptId, orderId, key: 'finalize-reject', state: 'refunded', providerPaymentId: 'pay-finalize-reject', verified: false });
+  const closureId = requestClosure(orderId, 'rejected', 'Pagamento recusado').split('|')[0];
+
+  assert.match(sql(`select status || '|' || inventory_state from finalize_order_closure_if_resolved('${closureId}');`), /rejected\|released/);
+  assert.equal(sql(`select state from order_closure_requests where id='${closureId}';`), 'completed');
+  assert.equal(sql(`select stock_count from products where id='${productId}';`), '1');
+});
+
+for (const [state, suffix] of [['manual_review', '058'], ['failed', '059']]) {
+  test(`${state} non-completed closure freezes ordinary fulfillment`, () => {
+    const orderId = `21000000-0000-0000-0000-000000000${suffix}`;
+    seedOrder({ id: orderId, code: `NA-FREEZE-${state.toUpperCase()}`, status: 'confirmed', paymentState: 'paid', inventoryState: 'reserved' });
+    const closureId = requestClosure(orderId).split('|')[0];
+    sql(`update order_closure_requests set state='${state}' where id='${closureId}';`);
+
+    assert.throws(
+      () => sql(`select status from transition_order_fulfillment('${orderId}', 'packing', null, null);`),
+      /order_closure_in_progress/,
+    );
+    assert.equal(sql(`select status from orders where id='${orderId}';`), 'confirmed');
+  });
+}
+
+test('direct orders.status update cannot bypass an open closure', () => {
+  const orderId = '21000000-0000-0000-0000-000000000060';
+  seedOrder({ id: orderId, code: 'NA-FREEZE-DIRECT', status: 'confirmed', paymentState: 'paid', inventoryState: 'reserved' });
+  requestClosure(orderId);
+
+  assert.throws(
+    () => sql(`update orders set status='packing' where id='${orderId}';`),
+    /order_closure_in_progress/,
+  );
+  assert.equal(sql(`select status from orders where id='${orderId}';`), 'confirmed');
+});
+
 test('closure refuses paid, provider-uncertain, pending-refund, partial/manual-review, and unresolved action states', () => {
   const states = [
     ['paid', 'paid'],

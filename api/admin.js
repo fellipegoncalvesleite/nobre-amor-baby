@@ -259,7 +259,7 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
       });
     } catch (error) {
       const isClosureTarget = body.status === 'cancelled' || body.status === 'rejected';
-      if (isClosureTarget && error?.code === 'inventory_release_requires_payment_resolution') {
+      if (isClosureTarget && ['inventory_release_requires_payment_resolution', 'order_closure_in_progress'].includes(error?.code)) {
         const reason = body.status === 'rejected'
           ? body.rejected_reason.trim()
           : body.cancel_reason.trim();
@@ -291,11 +291,17 @@ async function handleOrderDetail(req, res, supabase, orderCode) {
             });
           }
         } catch (resolutionError) {
+          if (resolutionError?.code === 'order_closure_conflict' || String(resolutionError?.message || '').includes('order_closure_conflict')) {
+            return json(res, 409, {
+              error: 'order_closure_conflict',
+              message: 'Este pedido já possui um processo de cancelamento ou recusa com outro destino.',
+            });
+          }
           console.error('[admin/orders/patch] payment resolution error:', {
             code: resolutionError?.code,
             message: resolutionError?.message,
           });
-          return json(res, 500, {
+          return json(res, Number(resolutionError?.status) || 500, {
             error: resolutionError?.code || 'payment_resolution_failed',
             message: 'Falha ao iniciar a resolução financeira do pedido.',
           });

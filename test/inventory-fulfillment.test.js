@@ -17,6 +17,113 @@ function createMockResponse() {
   };
 }
 
+async function createAdminClosureHarness(t, {
+  order,
+  transitionError = { code: 'P0001', message: 'order_closure_in_progress' },
+  closure = null,
+  closureError = null,
+  finalizeError = { code: 'P0001', message: 'payment_resolution_incomplete' },
+} = {}) {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    requests.push({ method: req.method, url: req.url, body });
+    res.setHeader('Content-Type', 'application/json');
+
+    if (req.url.startsWith('/rest/v1/orders') && req.method === 'GET') {
+      res.end(JSON.stringify(order));
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/order_items') && req.method === 'GET') {
+      res.end('[]');
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/payment_attempts') && req.method === 'GET') {
+      res.end('[]');
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/payment_resolution_actions') && req.method === 'GET') {
+      res.end('[]');
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/order_closure_requests') && req.method === 'GET') {
+      res.end(JSON.stringify(closure));
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/order_closure_requests') && req.method === 'PATCH') {
+      const patch = body ? JSON.parse(body) : {};
+      res.end(JSON.stringify(closure ? { ...closure, ...patch } : null));
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/rpc/transition_order_fulfillment') && req.method === 'POST') {
+      if (transitionError) {
+        res.statusCode = 400;
+        res.end(JSON.stringify(transitionError));
+      } else {
+        const input = JSON.parse(body || '{}');
+        res.end(JSON.stringify({ ...order, status: input.p_new_status }));
+      }
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/rpc/request_order_closure') && req.method === 'POST') {
+      if (closureError) {
+        res.statusCode = 400;
+        res.end(JSON.stringify(closureError));
+      } else {
+        res.end(JSON.stringify(closure));
+      }
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/rpc/finalize_order_closure_if_resolved') && req.method === 'POST') {
+      if (finalizeError) {
+        res.statusCode = 400;
+        res.end(JSON.stringify(finalizeError));
+      } else {
+        res.end(JSON.stringify({ ...order, status: closure?.target_status || order.status }));
+      }
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/rpc/')) {
+      res.end('{}');
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end(JSON.stringify({ message: `unexpected ${req.method} ${req.url}` }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previous = {
+    url: process.env.SUPABASE_URL,
+    key: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    admin: process.env.ADMIN_API_KEY,
+  };
+  t.after(() => {
+    if (previous.url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previous.url;
+    if (previous.key === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previous.key;
+    if (previous.admin === undefined) delete process.env.ADMIN_API_KEY; else process.env.ADMIN_API_KEY = previous.admin;
+  });
+  process.env.SUPABASE_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  process.env.ADMIN_API_KEY = 'test-admin-key';
+
+  return {
+    requests,
+    async patch(body) {
+      const res = createMockResponse();
+      await adminHandler({
+        method: 'PATCH',
+        headers: { 'x-admin-key': 'test-admin-key' },
+        query: { resource: 'orders', id: order.order_code },
+        body,
+      }, res);
+      return res;
+    },
+  };
+}
+
 function checkoutRequest() {
   return {
     method: 'POST',
@@ -252,9 +359,84 @@ test('inventory RPC errors preserve explicit conflict semantics', async () => {
   assert.equal(conflict.code, 'inventory_release_requires_payment_resolution');
   assert.equal(conflict.status, 409);
 
+  const closureConflict = inventoryRpcError({ message: 'order_closure_in_progress', code: 'P0001' });
+  assert.equal(closureConflict.code, 'order_closure_in_progress');
+  assert.equal(closureConflict.status, 409);
+  assert.match(closureConflict.message, /cancelamento|recusa/i);
+
   const malformed = inventoryRpcError({ message: 'invalid_product_size', code: '22023' });
   assert.equal(malformed.code, 'invalid_product_size');
   assert.equal(malformed.status, 400);
+});
+
+test('ordinary admin fulfillment advance returns 409 when an order closure freezes fulfillment', async (t) => {
+  const order = {
+    id: '11111111-1111-1111-1111-111111111201',
+    order_code: 'NA-CLOSURE-ADVANCE',
+    status: 'confirmed',
+    payment_state: 'paid',
+    inventory_state: 'reserved',
+  };
+  const harness = await createAdminClosureHarness(t, { order });
+  const res = await harness.patch({ status: 'packing' });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, 'order_closure_in_progress');
+  assert.equal(harness.requests.filter((request) => request.url.includes('/rpc/request_order_closure')).length, 0);
+});
+
+test('admin repeated same-target cancellation reuses the open closure and returns 202', async (t) => {
+  const order = {
+    id: '11111111-1111-1111-1111-111111111202',
+    order_code: 'NA-CLOSURE-REPEAT',
+    status: 'new',
+    payment_state: 'paid',
+    inventory_state: 'reserved',
+  };
+  const closure = {
+    id: 'closure-admin-repeat',
+    order_id: order.id,
+    target_status: 'cancelled',
+    reason: 'Cliente desistiu',
+    state: 'waiting_provider',
+    last_error_code: null,
+  };
+  const harness = await createAdminClosureHarness(t, { order, closure });
+  const res = await harness.patch({ status: 'cancelled', cancel_reason: 'Cliente desistiu' });
+
+  assert.equal(res.statusCode, 202);
+  assert.equal(res.body.resolutionPending, true);
+  assert.equal(res.body.closure.id, closure.id);
+  assert.equal(res.body.closure.targetStatus, 'cancelled');
+  assert.equal(harness.requests.filter((request) => request.url.includes('/rpc/request_order_closure')).length, 1);
+  assert.equal(harness.requests.filter((request) => request.url.includes('/rpc/ensure_payment_resolution_action')).length, 0);
+});
+
+test('admin conflicting closure target returns 409 instead of 500', async (t) => {
+  const order = {
+    id: '11111111-1111-1111-1111-111111111203',
+    order_code: 'NA-CLOSURE-CONFLICT',
+    status: 'new',
+    payment_state: 'paid',
+    inventory_state: 'reserved',
+  };
+  const closure = {
+    id: 'closure-admin-conflict',
+    order_id: order.id,
+    target_status: 'cancelled',
+    reason: 'Cliente desistiu',
+    state: 'waiting_provider',
+  };
+  const harness = await createAdminClosureHarness(t, {
+    order,
+    closure,
+    closureError: { code: 'P0001', message: 'order_closure_conflict' },
+  });
+  const res = await harness.patch({ status: 'rejected', rejected_reason: 'Fraude confirmada' });
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, 'order_closure_conflict');
+  assert.equal(harness.requests.filter((request) => request.url.includes('/rpc/request_order_closure')).length, 1);
 });
 
 test('fulfillment wrapper sends only server-authoritative transition inputs', async () => {

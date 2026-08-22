@@ -19,6 +19,7 @@ const ERROR_DEFINITIONS = {
   verified_payment_required: [409, 'O pedido precisa de um pagamento verificado antes da confirmação.'],
   payment_required: [409, 'O pedido precisa estar pago antes da confirmação.'],
   inventory_release_requires_payment_resolution: [409, 'O pagamento precisa ser resolvido antes de liberar o estoque.'],
+  order_closure_in_progress: [409, 'Este pedido está em processo de cancelamento ou recusa e não pode avançar no atendimento.'],
   inventory_count_overflow: [500, 'O ajuste de estoque excedeu o limite permitido.'],
 };
 

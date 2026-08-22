@@ -441,6 +441,45 @@ create trigger trg_payment_attempt_order_closure_guard
   before insert on public.payment_attempts
   for each row execute function public.prevent_payment_attempt_during_order_closure();
 
+-- Once financial closure starts, fulfillment is owned by the closure finalizer.
+-- Read the open closure without taking another row lock: request/finalize paths
+-- already serialize through the order row, and the trigger must not invert that
+-- lock ordering. Only the finalizer's exact ready target may change status.
+create or replace function public.prevent_fulfillment_change_during_order_closure()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+declare
+  v_closure public.order_closure_requests%rowtype;
+begin
+  if old.status is not distinct from new.status then
+    return new;
+  end if;
+
+  select * into v_closure
+  from public.order_closure_requests
+  where order_id = new.id
+    and state <> 'completed'
+  order by created_at asc, id asc
+  limit 1;
+
+  if found and not (
+    v_closure.state = 'ready_to_finalize'
+    and new.status = v_closure.target_status
+  ) then
+    raise exception using errcode = 'P0001', message = 'order_closure_in_progress';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_orders_fulfillment_closure_guard on public.orders;
+create trigger trg_orders_fulfillment_closure_guard
+  before update of status on public.orders
+  for each row execute function public.prevent_fulfillment_change_during_order_closure();
+
 revoke all on function public.request_order_closure(uuid, text, text) from public;
 revoke execute on function public.request_order_closure(uuid, text, text) from anon, authenticated;
 grant execute on function public.request_order_closure(uuid, text, text) to service_role;
