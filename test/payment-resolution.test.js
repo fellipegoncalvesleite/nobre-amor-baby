@@ -628,11 +628,12 @@ test('same-key checkout replay with an open closure returns conflict before prov
   assert.equal(recoverCalls, 0);
 });
 
-test('payment-resolution admin recovery route explicitly requires manager JWT, not legacy admin-key access', () => {
+test('payment-resolution admin recovery route is covered by the universal manager JWT gate', () => {
   const adminApi = readFileSync(resolve(ROOT, 'api/admin.js'), 'utf8');
-  assert.match(adminApi, /resource === 'payment-resolutions'/);
-  assert.match(adminApi, /manager_auth_required/);
-  assert.match(adminApi, /!req\.authUser/);
+  assert.match(adminApi, /const manager = await requireManager\(req, res\)/);
+  assert.match(adminApi, /case 'payment-resolutions'/);
+  assert.doesNotMatch(adminApi, /manager_auth_required/);
+  assert.doesNotMatch(adminApi, /resource === 'payment-resolutions'/);
 });
 
 test('successful closure finalization does not perform a second Node-side completed-state update after the atomic RPC', () => {

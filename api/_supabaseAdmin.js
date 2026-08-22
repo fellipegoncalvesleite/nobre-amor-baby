@@ -37,7 +37,7 @@ export async function verifyUser(req) {
     .eq('id', user.id)
     .maybeSingle();
 
-  return { user, profile: profile || { id: user.id, email: user.email, role: 'customer' } };
+  return { user, profile: profile || null };
 }
 
 /* ── Require manager/debug role ──────────────────── */

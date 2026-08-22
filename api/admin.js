@@ -12,7 +12,6 @@
  *   resource=upload       POST upload image
  *
  * Protected by JWT (Authorization: Bearer <token>) + manager/debug role.
- * Falls back to x-admin-key header for backwards compatibility during migration.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -61,33 +60,15 @@ const ALLOWED_STATUSES = ['new', 'confirmed', 'rejected', 'cancelled', 'packing'
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
+  /* ── universal admin authorization boundary ───── */
+  const manager = await requireManager(req, res);
+  if (!manager) return; // response already sent by requireManager
+  req.authUser = manager.user;
+
   const { resource, id } = req.query;
-
-  /* ── auth: JWT first, fallback to x-admin-key ──── */
-  const authHeader = req.headers['authorization'] || '';
-  req.authUser = null;
-  if (authHeader.startsWith('Bearer ')) {
-    const mgr = await requireManager(req, res);
-    if (!mgr) return; // response already sent by requireManager
-    req.authUser = mgr.user;
-  } else {
-    // Legacy x-admin-key fallback
-    const adminKey = process.env.ADMIN_API_KEY;
-    if (!adminKey) return json(res, 500, { error: 'missing_env', message: 'Admin key not configured.' });
-    if (req.headers['x-admin-key'] !== adminKey) {
-      return json(res, 401, { error: 'unauthorized', message: 'Invalid or missing authorization.' });
-    }
-  }
-
-  if (resource === 'payment-resolutions' && !req.authUser) {
-    return json(res, 403, {
-      error: 'manager_auth_required',
-      message: 'Esta operação de resolução financeira exige autenticação de gerente.',
-    });
-  }
 
   /* ── supabase ──────────────────────────────────── */
   const sbUrl = process.env.SUPABASE_URL;

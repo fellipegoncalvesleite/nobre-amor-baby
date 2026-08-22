@@ -3,8 +3,8 @@
  *
  * Roles (from profiles table):
  *   "customer"  — default
- *   "manager"   — admin access  (nobreamorbaby@gmail.com, nobreamor@gmail.com)
- *   "debug"     — superset of manager (felipezzlx@icloud.com)
+ *   "manager"   — admin access
+ *   "debug"     — privileged superset of manager
  *
  * Exposes:
  *   session, user, profile, isAuthed, loading

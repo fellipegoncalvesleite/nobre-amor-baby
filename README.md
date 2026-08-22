@@ -40,7 +40,6 @@ ASAAS_API_URL=
 ASAAS_WEBHOOK_TOKEN=
 MELHOR_ENVIO_TOKEN=
 SITE_URL=
-ADMIN_API_KEY=
 ```
 
 Copie o arquivo de exemplo, preencha os valores e instale as dependências:

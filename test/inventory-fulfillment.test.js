@@ -17,6 +17,27 @@ function createMockResponse() {
   };
 }
 
+const TEST_MANAGER_ID = '10000000-0000-0000-0000-000000000099';
+
+function handleManagerAuthRequest(req, res) {
+  if (req.url === '/auth/v1/user' && req.method === 'GET') {
+    if (req.headers.authorization !== 'Bearer test-manager-token') {
+      res.statusCode = 401;
+      res.end(JSON.stringify({ message: 'invalid token' }));
+      return true;
+    }
+    res.end(JSON.stringify({ id: TEST_MANAGER_ID, email: 'manager@example.com', user_metadata: {} }));
+    return true;
+  }
+
+  if (req.url.startsWith('/rest/v1/profiles') && req.method === 'GET') {
+    res.end(JSON.stringify({ id: TEST_MANAGER_ID, email: 'manager@example.com', role: 'manager' }));
+    return true;
+  }
+
+  return false;
+}
+
 async function createAdminClosureHarness(t, {
   order,
   transitionError = { code: 'P0001', message: 'order_closure_in_progress' },
@@ -30,6 +51,7 @@ async function createAdminClosureHarness(t, {
     for await (const chunk of req) body += chunk;
     requests.push({ method: req.method, url: req.url, body });
     res.setHeader('Content-Type', 'application/json');
+    if (handleManagerAuthRequest(req, res)) return;
 
     if (req.url.startsWith('/rest/v1/orders') && req.method === 'GET') {
       res.end(JSON.stringify(order));
@@ -98,16 +120,13 @@ async function createAdminClosureHarness(t, {
   const previous = {
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    admin: process.env.ADMIN_API_KEY,
   };
   t.after(() => {
     if (previous.url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previous.url;
     if (previous.key === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previous.key;
-    if (previous.admin === undefined) delete process.env.ADMIN_API_KEY; else process.env.ADMIN_API_KEY = previous.admin;
   });
   process.env.SUPABASE_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-  process.env.ADMIN_API_KEY = 'test-admin-key';
 
   return {
     requests,
@@ -115,7 +134,7 @@ async function createAdminClosureHarness(t, {
       const res = createMockResponse();
       await adminHandler({
         method: 'PATCH',
-        headers: { 'x-admin-key': 'test-admin-key' },
+        headers: { authorization: 'Bearer test-manager-token' },
         query: { resource: 'orders', id: order.order_code },
         body,
       }, res);
@@ -298,6 +317,7 @@ test('admin confirmed to packing never restores stock outside the fulfillment tr
     for await (const chunk of req) body += chunk;
     requests.push({ method: req.method, url: req.url, body });
     res.setHeader('Content-Type', 'application/json');
+    if (handleManagerAuthRequest(req, res)) return;
 
     if (req.url.startsWith('/rest/v1/orders') && req.method === 'GET') {
       res.end(JSON.stringify(order));
@@ -328,21 +348,18 @@ test('admin confirmed to packing never restores stock outside the fulfillment tr
   const previous = {
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    admin: process.env.ADMIN_API_KEY,
   };
   t.after(() => {
     if (previous.url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previous.url;
     if (previous.key === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previous.key;
-    if (previous.admin === undefined) delete process.env.ADMIN_API_KEY; else process.env.ADMIN_API_KEY = previous.admin;
   });
   process.env.SUPABASE_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-  process.env.ADMIN_API_KEY = 'test-admin-key';
 
   const res = createMockResponse();
   await adminHandler({
     method: 'PATCH',
-    headers: { 'x-admin-key': 'test-admin-key' },
+    headers: { authorization: 'Bearer test-manager-token' },
     query: { resource: 'orders', id: order.order_code },
     body: { status: 'packing' },
   }, res);
@@ -761,6 +778,7 @@ test('admin product creation persists an empty size_options array when omitted',
     let body = '';
     for await (const chunk of req) body += chunk;
     res.setHeader('Content-Type', 'application/json');
+    if (handleManagerAuthRequest(req, res)) return;
 
     if (req.url.startsWith('/rest/v1/products') && req.method === 'POST') {
       insertedProduct = JSON.parse(body);
@@ -778,21 +796,18 @@ test('admin product creation persists an empty size_options array when omitted',
   const previous = {
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    admin: process.env.ADMIN_API_KEY,
   };
   t.after(() => {
     if (previous.url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = previous.url;
     if (previous.key === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = previous.key;
-    if (previous.admin === undefined) delete process.env.ADMIN_API_KEY; else process.env.ADMIN_API_KEY = previous.admin;
   });
   process.env.SUPABASE_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-  process.env.ADMIN_API_KEY = 'test-admin-key';
 
   const res = createMockResponse();
   await adminHandler({
     method: 'POST',
-    headers: { 'x-admin-key': 'test-admin-key' },
+    headers: { authorization: 'Bearer test-manager-token' },
     query: { resource: 'products' },
     body: {
       name: 'Body sem tamanhos',
