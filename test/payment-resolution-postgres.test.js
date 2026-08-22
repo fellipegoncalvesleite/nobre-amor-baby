@@ -35,9 +35,26 @@ function sql(statement, database = 'payment_resolution_test') {
   return run(BIN.psql, ['-X', '-v', 'ON_ERROR_STOP=1', '-At', '-d', database, '-c', statement]).trim();
 }
 
+function installedFunctionDefinition(signature) {
+  return sql(`select pg_get_functiondef('${signature}'::regprocedure);`);
+}
+
+function stripSqlComments(definition) {
+  return definition
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\n]*/g, ' ');
+}
+
+function executableFragmentPosition(definition, pattern, label) {
+  const executable = stripSqlComments(definition);
+  const match = executable.match(pattern);
+  assert.ok(match, `${label} executable fragment missing`);
+  return match.index;
+}
+
 function psqlAsync(statement) {
   return new Promise((resolvePromise) => {
-    const child = spawn(BIN.psql, ['-X', '-v', 'ON_ERROR_STOP=1', '-At', '-d', 'payment_resolution_test', '-c', statement], {
+    const child = spawn(BIN.psql, ['-X', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', '-At', '-d', 'payment_resolution_test', '-c', statement], {
       env: { ...process.env, ...pgEnv },
     });
     let stdout = '';
@@ -133,6 +150,70 @@ beforeEach(() => {
   sql('truncate payment_resolution_actions, order_closure_requests, payment_attempts, order_items, orders, products cascade;');
 });
 
+
+test('finalizer follows global resolution lock order', () => {
+  const definition = installedFunctionDefinition('public.finalize_order_closure_if_resolved(uuid)');
+  const orderLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_order\s+from\s+public\.orders\s+where\s+id\s*=\s*v_order_id\s+for\s+update\s*;/i,
+    'orders FOR UPDATE',
+  );
+  const closureLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_closure\s+from\s+public\.order_closure_requests\s+where\s+id\s*=\s*p_closure_request_id\s+for\s+update\s*;/i,
+    'order_closure_requests FOR UPDATE',
+  );
+  const attemptsLock = executableFragmentPosition(
+    definition,
+    /perform\s+1\s+from\s+public\.payment_attempts\s+where\s+order_id\s*=\s*v_order\.id\s+order\s+by\s+id\s+for\s+update\s*;/i,
+    'payment_attempts FOR UPDATE',
+  );
+  const actionsLock = executableFragmentPosition(
+    definition,
+    /perform\s+1\s+from\s+public\.payment_resolution_actions\s+where\s+order_id\s*=\s*v_order\.id\s+order\s+by\s+id\s+for\s+update\s*;/i,
+    'payment_resolution_actions FOR UPDATE',
+  );
+
+  assert.ok(orderLock < closureLock, 'orders must lock before order_closure_requests');
+  assert.ok(closureLock < attemptsLock, 'order_closure_requests must lock before payment_attempts');
+  assert.ok(attemptsLock < actionsLock, 'payment_attempts must lock before payment_resolution_actions');
+});
+
+test('ensure payment resolution action follows global resolution lock order', () => {
+  const definition = installedFunctionDefinition('public.ensure_payment_resolution_action(uuid,uuid,uuid,text,text,text)');
+  const orderLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_order\s+from\s+public\.orders\s+where\s+id\s*=\s*p_order_id\s+for\s+update\s*;/i,
+    'orders FOR UPDATE',
+  );
+  const closureLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_closure\s+from\s+public\.order_closure_requests\s+where\s+id\s*=\s*p_closure_request_id\s+for\s+update\s*;/i,
+    'order_closure_requests FOR UPDATE',
+  );
+  const attemptLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_attempt\s+from\s+public\.payment_attempts\s+where\s+id\s*=\s*p_payment_attempt_id\s+for\s+update\s*;/i,
+    'payment_attempts FOR UPDATE',
+  );
+  const actionLock = executableFragmentPosition(
+    definition,
+    /select\s+\*\s+into\s+v_existing\s+from\s+public\.payment_resolution_actions\s+where\s+payment_attempt_id\s*=\s*p_payment_attempt_id\s+and\s+provider_action\s*=\s*p_provider_action\s+for\s+update\s*;/i,
+    'payment_resolution_actions FOR UPDATE',
+  );
+
+  assert.ok(orderLock < closureLock, 'orders must lock before order_closure_requests');
+  assert.ok(closureLock < attemptLock, 'order_closure_requests must lock before payment_attempts');
+  assert.ok(attemptLock < actionLock, 'payment_attempts must lock before payment_resolution_actions');
+});
+
+test('migration 019 documents the global resolution lock order', () => {
+  const migrationSql = readFileSync(MIGRATION, 'utf8');
+  assert.ok(migrationSql.includes(
+    '-- GLOBAL RESOLUTION LOCK ORDER:\n-- orders -> order_closure_requests -> payment_attempts -> payment_resolution_actions',
+  ));
+});
+
 test('migration 019 creates financial tables with RLS and backend-only RPC privileges', () => {
   assert.equal(sql("select relrowsecurity from pg_class where oid = 'order_closure_requests'::regclass;"), 't');
   assert.equal(sql("select relrowsecurity from pg_class where oid = 'payment_resolution_actions'::regclass;"), 't');
@@ -158,6 +239,56 @@ test('concurrent identical closure requests reuse one row and conflicting target
   assert.equal(a.stdout, b.stdout);
   assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}' and state <> 'completed';`), '1');
   assert.throws(() => requestClosure(orderId, 'rejected', 'Fraude'), /order_closure_conflict/);
+});
+
+test('concurrent payment-resolution operations avoid deadlocks and preserve one closure/action', async () => {
+  const iterations = 20;
+  const lockErrors = /40P01|deadlock detected|55P03|lock timeout|statement timeout|canceling statement due to (?:lock|statement) timeout/i;
+
+  for (let index = 0; index < iterations; index += 1) {
+    const suffix = String(600 + index).padStart(12, '0');
+    const productId = `11000000-0000-0000-0000-${suffix}`;
+    const orderId = `21000000-0000-0000-0000-${suffix}`;
+    const attemptId = `31000000-0000-0000-0000-${suffix}`;
+    const providerPaymentId = `pay-lock-race-${index}`;
+    seedProduct(productId, 0);
+    seedOrder({ id: orderId, code: `NA-LOCK-RACE-${index}`, paymentState: 'refunded', inventoryState: 'reserved' });
+    seedItem(orderId, productId);
+    seedAttempt({ id: attemptId, orderId, key: `lock-race-${index}`, state: 'refunded', providerPaymentId, verified: false });
+    const closureId = requestClosure(orderId).split('|')[0];
+    const actionId = ensureAction({ orderId, attemptId, closureId, providerPaymentId }).split('|')[0];
+    sql(`update payment_resolution_actions set state='provider_pending' where id='${actionId}';`);
+
+    const transaction = (statement) => `begin;
+      set local deadlock_timeout='50ms';
+      set local lock_timeout='1500ms';
+      set local statement_timeout='5s';
+      ${statement}
+      commit;`;
+    const [closureResult, actionResult, finalizerResult] = await Promise.all([
+      psqlAsync(transaction(`select id from request_order_closure('${orderId}','cancelled','Cliente desistiu');`)),
+      psqlAsync(transaction(`select id from ensure_payment_resolution_action(
+        '${orderId}','${attemptId}','${closureId}','order_close_refund','refund','${providerPaymentId}'
+      );`)),
+      psqlAsync(transaction(`select id from finalize_order_closure_if_resolved('${closureId}');`)),
+    ]);
+
+    for (const [label, result] of [['closure', closureResult], ['action', actionResult], ['finalizer', finalizerResult]]) {
+      assert.doesNotMatch(result.stderr, lockErrors, `${label} hit a deadlock/lock timeout on iteration ${index}`);
+    }
+    assert.equal(closureResult.code, 0, closureResult.stderr);
+    assert.equal(actionResult.code, 0, actionResult.stderr);
+    assert.equal(finalizerResult.code, 1, 'finalizer must remain blocked by provider_pending action');
+    assert.match(finalizerResult.stderr, /payment_resolution_incomplete/);
+
+    assert.equal(sql(`select count(*) from order_closure_requests where order_id='${orderId}';`), '1');
+    assert.equal(sql(`select count(*) from payment_resolution_actions where order_id='${orderId}';`), '1');
+    assert.equal(sql(`select state from order_closure_requests where id='${closureId}';`), 'pending');
+    assert.equal(sql(`select state from payment_resolution_actions where id='${actionId}';`), 'provider_pending');
+    assert.equal(sql(`select state from payment_attempts where id='${attemptId}';`), 'refunded');
+    assert.equal(sql(`select status || '|' || payment_state || '|' || inventory_state from orders where id='${orderId}';`), 'new|refunded|reserved');
+    assert.equal(sql(`select stock_count from products where id='${productId}';`), '0');
+  }
 });
 
 test('concurrent action execution claims produce exactly one provider-call winner', async () => {

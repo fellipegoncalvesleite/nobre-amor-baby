@@ -175,6 +175,12 @@ begin
 end;
 $$;
 
+-- GLOBAL RESOLUTION LOCK ORDER:
+-- orders -> order_closure_requests -> payment_attempts -> payment_resolution_actions
+-- Lock the parent/business aggregate first, then the closure coordination row,
+-- then payment-attempt rows, and finally resolution-action rows. Keep this
+-- hierarchy consistent across migration-019 payment-resolution transactions.
+
 create or replace function public.ensure_payment_resolution_action(
   p_order_id uuid,
   p_payment_attempt_id uuid,
@@ -189,6 +195,7 @@ security definer
 set search_path = pg_catalog
 as $$
 declare
+  v_order public.orders%rowtype;
   v_attempt public.payment_attempts%rowtype;
   v_closure public.order_closure_requests%rowtype;
   v_existing public.payment_resolution_actions%rowtype;
@@ -206,22 +213,13 @@ begin
     raise exception using errcode = '22023', message = 'provider_payment_id_required';
   end if;
 
-  select * into v_attempt
-  from public.payment_attempts
-  where id = p_payment_attempt_id
+  select * into v_order
+  from public.orders
+  where id = p_order_id
   for update;
 
   if not found then
-    raise exception using errcode = 'P0002', message = 'payment_attempt_not_found';
-  end if;
-  if v_attempt.order_id <> p_order_id then
-    raise exception using errcode = '23514', message = 'payment_attempt_order_mismatch';
-  end if;
-  if v_attempt.provider <> 'asaas'
-    or v_attempt.provider_payment_id is null
-    or v_attempt.provider_payment_id <> p_provider_payment_id
-  then
-    raise exception using errcode = '23514', message = 'provider_payment_identity_mismatch';
+    raise exception using errcode = 'P0002', message = 'order_not_found';
   end if;
 
   if p_closure_request_id is not null then
@@ -233,9 +231,27 @@ begin
     if not found then
       raise exception using errcode = 'P0002', message = 'order_closure_not_found';
     end if;
-    if v_closure.order_id <> p_order_id then
+    if v_closure.order_id <> v_order.id then
       raise exception using errcode = '23514', message = 'closure_order_mismatch';
     end if;
+  end if;
+
+  select * into v_attempt
+  from public.payment_attempts
+  where id = p_payment_attempt_id
+  for update;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'payment_attempt_not_found';
+  end if;
+  if v_attempt.order_id <> v_order.id then
+    raise exception using errcode = '23514', message = 'payment_attempt_order_mismatch';
+  end if;
+  if v_attempt.provider <> 'asaas'
+    or v_attempt.provider_payment_id is null
+    or v_attempt.provider_payment_id <> p_provider_payment_id
+  then
+    raise exception using errcode = '23514', message = 'provider_payment_identity_mismatch';
   end if;
 
   select * into v_existing
@@ -334,7 +350,25 @@ as $$
 declare
   v_closure public.order_closure_requests%rowtype;
   v_order public.orders%rowtype;
+  v_order_id uuid;
 begin
+  select order_id into v_order_id
+  from public.order_closure_requests
+  where id = p_closure_request_id;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'order_closure_not_found';
+  end if;
+
+  select * into v_order
+  from public.orders
+  where id = v_order_id
+  for update;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'order_not_found';
+  end if;
+
   select * into v_closure
   from public.order_closure_requests
   where id = p_closure_request_id
@@ -344,13 +378,8 @@ begin
     raise exception using errcode = 'P0002', message = 'order_closure_not_found';
   end if;
 
-  select * into v_order
-  from public.orders
-  where id = v_closure.order_id
-  for update;
-
-  if not found then
-    raise exception using errcode = 'P0002', message = 'order_not_found';
+  if v_closure.order_id <> v_order.id then
+    raise exception using errcode = '23514', message = 'order_closure_order_mismatch';
   end if;
 
   if v_closure.state = 'completed' then
