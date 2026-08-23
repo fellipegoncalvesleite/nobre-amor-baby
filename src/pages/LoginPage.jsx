@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { ensureSupabaseAuthReachable, isSupabaseConfigured } from '../lib/supabaseClient';
 import { focusRing } from '../lib/ui';
 import { saveReturnPath, clearReturnPath } from '../lib/authReturn';
+import { recordAuthRequest } from '../lib/authDiagnostics';
 
 const toastStyle = { background: '#F0DAE8', color: '#373438', borderRadius: '12px' };
 
@@ -62,36 +63,6 @@ function mapAuthError(err, context = 'login') {
   if (context === 'signup') return m || 'Falha ao criar conta.';
   if (context === 'oauth') return m || 'Falha ao iniciar login.';
   return m || 'Falha ao entrar.';
-}
-
-const AUTH_LOG_KEY = 'nobre_amor_auth_requests';
-
-function logAuthRequest(method, detail) {
-  try {
-    const logs = JSON.parse(sessionStorage.getItem(AUTH_LOG_KEY) || '[]');
-    logs.push({ method, detail, ts: new Date().toISOString(), type: 'req' });
-    if (logs.length > 40) logs.splice(0, logs.length - 40);
-    sessionStorage.setItem(AUTH_LOG_KEY, JSON.stringify(logs));
-  } catch { /* ok */ }
-  if (import.meta.env.DEV) console.log(`[Auth] → ${method}`, detail);
-}
-
-function logAuthResult(method, err) {
-  try {
-    const logs = JSON.parse(sessionStorage.getItem(AUTH_LOG_KEY) || '[]');
-    logs.push({
-      method,
-      type: err ? 'err' : 'ok',
-      ts: new Date().toISOString(),
-      ...(err && { message: err.message, status: err.status, name: err.name }),
-    });
-    if (logs.length > 40) logs.splice(0, logs.length - 40);
-    sessionStorage.setItem(AUTH_LOG_KEY, JSON.stringify(logs));
-  } catch { /* ok */ }
-  if (import.meta.env.DEV) {
-    if (err) console.warn(`[Auth] ✗ ${method}`, { message: err.message, status: err.status, name: err.name });
-    else console.log(`[Auth] ✓ ${method}`);
-  }
 }
 
 const inputCls = `w-full px-4 py-3 rounded-xl border border-baby-text/30 bg-white dark:bg-gray-900
@@ -148,11 +119,11 @@ export default function LoginPage() {
     }
     setBusy(true);
     try {
-      logAuthRequest('signInWithPassword', email.trim());
+      recordAuthRequest({ method: 'signInWithPassword', outcome: 'request', type: 'password' }, { enabled: import.meta.env.DEV });
       await signInWithPassword(email.trim(), password);
-      logAuthResult('signInWithPassword', null);
+      recordAuthRequest({ method: 'signInWithPassword', outcome: 'ok', type: 'password' }, { enabled: import.meta.env.DEV });
     } catch (err) {
-      logAuthResult('signInWithPassword', err);
+      recordAuthRequest({ method: 'signInWithPassword', outcome: 'error', type: 'password', status: err?.status, errorName: err?.name }, { enabled: import.meta.env.DEV });
       console.error('[LoginPage] login error:', err);
       const msg = mapAuthError(err, 'login');
       toast.error(msg, { style: toastStyle });
@@ -179,13 +150,13 @@ export default function LoginPage() {
     }
     setBusy(true);
     try {
-      logAuthRequest('signUp', email.trim());
+      recordAuthRequest({ method: 'signUp', outcome: 'request', type: 'password' }, { enabled: import.meta.env.DEV });
       await signUp(email.trim(), password, name.trim(), lastName.trim());
-      logAuthResult('signUp', null);
+      recordAuthRequest({ method: 'signUp', outcome: 'ok', type: 'password' }, { enabled: import.meta.env.DEV });
       setSignupDone(true);
       toast.success('Conta criada! Verifique seu e-mail para concluir o cadastro.', { style: toastStyle, duration: 5000 });
     } catch (err) {
-      logAuthResult('signUp', err);
+      recordAuthRequest({ method: 'signUp', outcome: 'error', type: 'password', status: err?.status, errorName: err?.name }, { enabled: import.meta.env.DEV });
       console.error('[LoginPage] signup error:', err);
       const msg = mapAuthError(err, 'signup');
       toast.error(msg, { style: toastStyle });
@@ -203,10 +174,11 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await ensureSupabaseAuthReachable();
-      logAuthRequest('signInWithOAuth', provider);
+      recordAuthRequest({ method: 'signInWithOAuth', outcome: 'request', type: 'oauth', provider }, { enabled: import.meta.env.DEV });
       await signInWithOAuth(provider);
+      recordAuthRequest({ method: 'signInWithOAuth', outcome: 'ok', type: 'oauth', provider }, { enabled: import.meta.env.DEV });
     } catch (err) {
-      logAuthResult('signInWithOAuth', err);
+      recordAuthRequest({ method: 'signInWithOAuth', outcome: 'error', type: 'oauth', provider, status: err?.status, errorName: err?.name }, { enabled: import.meta.env.DEV });
       console.error('[LoginPage] OAuth error:', err);
       toast.error(mapAuthError(err, 'oauth'), { style: toastStyle });
       setBusy(false);

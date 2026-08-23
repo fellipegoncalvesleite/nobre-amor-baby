@@ -394,6 +394,33 @@ test('shipping, newsletter, and profile-avatar reject hostile Origin before depe
   assert.deepEqual(avatarCalls, []);
 });
 
+test('shipping preflight allows Content-Type and Authorization only for an allowed Origin', async () => {
+  const shipping = createShippingQuoteHandler();
+  const allowed = createMockResponse();
+  await shipping({
+    method: 'OPTIONS',
+    headers: sameOriginHeaders({
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'Content-Type, Authorization',
+    }),
+    query: {},
+  }, allowed);
+  assert.equal(allowed.statusCode, 204);
+  assert.equal(allowed.getHeader('Access-Control-Allow-Headers'), 'Content-Type, Authorization');
+
+  const hostile = createMockResponse();
+  await shipping({
+    method: 'OPTIONS',
+    headers: hostileOriginHeaders({
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'Content-Type, Authorization',
+    }),
+    query: {},
+  }, hostile);
+  assert.equal(hostile.statusCode, 403);
+  assert.equal(hostile.body?.error, 'origin_not_allowed');
+});
+
 test('public route rejects hostile Origin before Supabase/business routing', async () => {
   const res = createMockResponse();
   await publicHandler({

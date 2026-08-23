@@ -32,15 +32,17 @@ export function isLocalCity(city, uf) {
 
 const API_TIMEOUT_MS = 8000;
 
-export async function quoteShippingFromApi({ toCep, items = [], debug = false }) {
+export async function quoteShippingFromApi({ toCep, items = [], debug = false, accessToken = null }) {
   const url = debug ? '/api/shipping-quote?debug=1' : '/api/shipping-quote';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const headers = { 'Content-Type': 'application/json' };
+  if (debug && accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         toCep: normalizeCep(toCep),
         items: items.map((item) => ({
@@ -89,11 +91,12 @@ export async function quoteShippingFromApi({ toCep, items = [], debug = false })
   }
 }
 
-export async function calculateShipping({ cep, cart = [], debug = false }) {
+export async function calculateShipping({ cep, cart = [], debug = false, accessToken = null }) {
   const quote = await quoteShippingFromApi({
     toCep: cep,
     items: cart,
     debug,
+    accessToken,
   });
 
   return {

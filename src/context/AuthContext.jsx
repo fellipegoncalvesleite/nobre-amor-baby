@@ -13,6 +13,7 @@
  */
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { assertSupabaseConfigured, supabase } from '../lib/supabaseClient';
+import { clearAuthDiagnostics, recordAuthEvent } from '../lib/authDiagnostics';
 
 const AuthContext = createContext(null);
 
@@ -41,6 +42,8 @@ export function AuthProvider({ children }) {
 
   /* ── Listen to Supabase auth state ─────────────── */
   useEffect(() => {
+    const diagnosticsEnabled = import.meta.env.DEV;
+    if (!diagnosticsEnabled) clearAuthDiagnostics();
     if (!supabase) return undefined;
 
     // 1. Restore any existing session from storage
@@ -52,16 +55,10 @@ export function AuthProvider({ children }) {
 
     // 2. Listen for auth state changes (login, logout, token refresh, email confirm)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      // Debug: log auth events to sessionStorage + console
-      if (import.meta.env.DEV) {
-        console.log(`[Auth] Event: ${event}`, { hasSession: !!s, userId: s?.user?.id });
+      if (diagnosticsEnabled) {
+        console.log(`[Auth] Event: ${event}`, { hasSession: !!s });
       }
-      try {
-        const logs = JSON.parse(sessionStorage.getItem('nobre_amor_auth_debug') || '[]');
-        logs.push({ event, timestamp: new Date().toISOString(), hasSession: !!s, userId: s?.user?.id ?? null });
-        if (logs.length > 20) logs.splice(0, logs.length - 20);
-        sessionStorage.setItem('nobre_amor_auth_debug', JSON.stringify(logs));
-      } catch { /* ok */ }
+      recordAuthEvent({ event, hasSession: !!s }, { enabled: diagnosticsEnabled });
 
       setSession(s);
       if (s?.user) {

@@ -5,6 +5,7 @@ import { FiAlertCircle, FiCheckCircle, FiLoader, FiPackage, FiShoppingBag } from
 import { useAuth } from '../context/AuthContext';
 import { getSupabaseConfigError, supabase } from '../lib/supabaseClient';
 import { clearReturnPath, getReturnPath } from '../lib/authReturn';
+import { recordAuthCallback } from '../lib/authDiagnostics';
 
 const TIMEOUT_MS = 15_000;
 const COUNTDOWN_SECONDS = 5;
@@ -23,18 +24,16 @@ export default function AuthCallbackPage() {
   const effectiveStatus = !authLoading && isAuthed && status === 'processing' ? 'success' : status;
 
   useEffect(() => {
-    const info = {
-      timestamp: new Date().toISOString(),
-      hash: window.location.hash ? `${window.location.hash.substring(0, 50)}...` : '(empty)',
-      searchParams: Object.fromEntries(searchParams.entries()),
+    const diagnostics = {
+      parameterNames: [...new Set(searchParams.keys())],
+      hasHash: Boolean(window.location.hash),
+      hasCode: searchParams.has('code'),
+      hasTokenHash: searchParams.has('token_hash'),
+      flowType: searchParams.get('type'),
       returnPath,
     };
-    if (import.meta.env.DEV) console.log('[AuthCallback] init', info);
-    try {
-      sessionStorage.setItem('nobre_amor_callback_debug', JSON.stringify(info));
-    } catch {
-      /* ignore */
-    }
+    if (import.meta.env.DEV) console.log('[AuthCallback] init', diagnostics);
+    recordAuthCallback(diagnostics, { enabled: import.meta.env.DEV });
   }, [returnPath, searchParams]);
 
   useEffect(() => {

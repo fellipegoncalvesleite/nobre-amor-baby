@@ -118,7 +118,6 @@ function AuthDebugSection({ user }) {
                     'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                   }`}>{e.event}</span>
                   <span className="text-baby-text/40">{new Date(e.timestamp).toLocaleTimeString()}</span>
-                  {e.userId && <span className="text-baby-text/30 truncate">{e.userId.slice(0, 8)}…</span>}
                 </div>
               ))}
             </div>
@@ -147,15 +146,15 @@ function AuthDebugSection({ user }) {
               {[...authRequests].reverse().map((r, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2 text-xs border-b border-baby-text/10 pb-1">
                   <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                    r.type === 'req' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                    r.type === 'ok'  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    r.outcome === 'request' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                    r.outcome === 'ok' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
                     'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  }`}>{r.type === 'req' ? '→' : r.type === 'ok' ? '✓' : '✗'}</span>
+                  }`}>{r.outcome === 'request' ? '→' : r.outcome === 'ok' ? '✓' : '✗'}</span>
                   <span className="font-mono text-baby-text/80">{r.method}</span>
-                  {r.detail && <span className="text-baby-text/40 truncate max-w-[120px]">{r.detail}</span>}
+                  {r.provider && <span className="text-baby-text/40">{r.provider}</span>}
                   {r.status && <span className="text-red-500 font-bold">HTTP {r.status}</span>}
-                  {r.message && <span className="text-red-600 dark:text-red-400 truncate max-w-[200px]">{r.message}</span>}
-                  <span className="text-baby-text/30 ml-auto">{new Date(r.ts).toLocaleTimeString()}</span>
+                  {r.errorName && <span className="text-red-600 dark:text-red-400">{r.errorName}</span>}
+                  <span className="text-baby-text/30 ml-auto">{new Date(r.timestamp).toLocaleTimeString()}</span>
                 </div>
               ))}
             </div>
@@ -657,7 +656,7 @@ export default function DebugPage() {
                   setAddress({ cep: '01001000', street: 'Praça da Sé', number: '250', complement: 'Sala 3', neighborhood: 'Sé', city: 'São Paulo', uf: 'SP' });
                   setShipping({ cepDigits: '01001000', city: 'São Paulo', uf: 'SP', isLoading: true, error: '' });
                   try {
-                    const result = await calculateShipping({ cep: '01001000', city: 'São Paulo', uf: 'SP', cart, products, debug: true });
+                    const result = await calculateShipping({ cep: '01001000', city: 'São Paulo', uf: 'SP', cart, products, debug: true, accessToken });
                     setShipping({ cepDigits: '01001000', city: 'São Paulo', uf: 'SP', feeCents: result.feeCents, etaText: result.etaText, source: result.source, isLoading: false, error: '' });
                     if (result.debug) setLastApiDebug(result.debug);
                     toast(`São Paulo → ${result.source} (R$ ${(result.feeCents/100).toFixed(2)})`, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
@@ -679,7 +678,7 @@ export default function DebugPage() {
                   if (!cep || !city) { toast('Preencha CEP e cidade primeiro.', { icon: '⚠️', style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } }); return; }
                   setShipping({ isLoading: true, error: '' });
                   try {
-                    const result = await calculateShipping({ cep, city, uf, cart, products, debug: true });
+                    const result = await calculateShipping({ cep, city, uf, cart, products, debug: true, accessToken });
                     setShipping({ cepDigits: cep, city, uf, feeCents: result.feeCents, etaText: result.etaText, source: result.source, isLoading: false, error: '' });
                     if (result.debug) setLastApiDebug(result.debug);
                     toast(`Recalculado: ${result.source} (R$ ${(result.feeCents/100).toFixed(2)})`, { style: { background: '#F0DAE8', color: '#373438', borderRadius: '12px' } });
@@ -906,14 +905,14 @@ export default function DebugPage() {
                       cep, city, uf,
                       cart: [{ id: products[0]?.id || '1', qty: 1 }],
                       products,
-                      debug: true,
+                      debug: true, accessToken,
                     });
                     // Quote with 8 items
                     const r8 = await calculateShipping({
                       cep, city, uf,
                       cart: [{ id: products[0]?.id || '1', qty: 8 }],
                       products,
-                      debug: true,
+                      debug: true, accessToken,
                     });
                     const pass = r1.feeCents !== r8.feeCents;
                     setWeightCheckResult({

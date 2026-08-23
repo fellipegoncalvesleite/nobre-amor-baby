@@ -1,4 +1,4 @@
-import { getSupabase } from './_supabaseAdmin.js';
+import { getSupabase, verifyUser } from './_supabaseAdmin.js';
 import { applyApiCors } from './_httpSecurity.js';
 import { calculateAuthoritativeShipping, resolveCatalogItems } from './_serverShipping.js';
 import {
@@ -17,6 +17,7 @@ function jsonResponse(res, status, body) {
 export function createShippingQuoteHandler(overrides = {}) {
   const deps = {
     getSupabase,
+    verifyUser,
     resolveCatalogItems,
     calculateAuthoritativeShipping,
     consumeRateLimits,
@@ -26,7 +27,7 @@ export function createShippingQuoteHandler(overrides = {}) {
   return async function handler(req, res) {
     if (applyApiCors(req, res, {
       methods: ['POST', 'OPTIONS'],
-      allowedHeaders: ['Content-Type'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
     })) return;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     if (req.method !== 'POST') {
@@ -37,6 +38,23 @@ export function createShippingQuoteHandler(overrides = {}) {
     }
 
     try {
+      const debugRequested = req.query?.debug === '1';
+      if (debugRequested) {
+        const { user, profile } = await deps.verifyUser(req);
+        if (!user) {
+          return jsonResponse(res, 401, {
+            error: 'unauthorized',
+            message: 'Token inválido ou ausente.',
+          });
+        }
+        if (profile?.role !== 'debug') {
+          return jsonResponse(res, 403, {
+            error: 'forbidden',
+            message: 'Acesso restrito a ferramentas de depuração.',
+          });
+        }
+      }
+
       const body = req.body || {};
       const supabase = deps.getSupabase();
       let rateLimit;
@@ -63,7 +81,7 @@ export function createShippingQuoteHandler(overrides = {}) {
         source: quote.source,
       };
 
-      if (req.query?.debug === '1') {
+      if (debugRequested) {
         result.debug = {
           rawFeeCents: quote.rawFeeCents,
           surcharge: quote.surcharge,
