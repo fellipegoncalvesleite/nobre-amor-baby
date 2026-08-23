@@ -458,6 +458,8 @@ test('missing Origin preserves normal route behavior and does not emit ACAO', as
 test('vercel.json preserves rewrites and defines the exact global browser security posture', async () => {
   const config = JSON.parse(await readText('vercel.json'));
   assert.deepEqual(config.rewrites, [
+    { source: '/robots.txt', destination: '/api/robots' },
+    { source: '/sitemap.xml', destination: '/api/sitemap' },
     { source: '/api/(.*)', destination: '/api/$1' },
     { source: '/(.*)', destination: '/index.html' },
   ]);

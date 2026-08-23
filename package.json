@@ -9,6 +9,7 @@
     "build": "vite build",
     "build:budget": "vite build --manifest && npm run check:bundle",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "check:production-config": "node scripts/check-production-config.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test"
