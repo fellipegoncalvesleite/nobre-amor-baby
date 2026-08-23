@@ -53,14 +53,15 @@ function parseHttpsUrl(value) {
 }
 
 function parseCanonicalOrigin(value) {
-  const parsed = parseHttpsUrl(value);
+  const raw = text(value);
+  const parsed = parseHttpsUrl(raw);
   if (!parsed.ok) return parsed;
   const { url } = parsed;
-  if (url.search) return { ok: false, reason: 'must not contain a query string' };
-  if (url.hash) return { ok: false, reason: 'must not contain a fragment' };
+  if (raw.includes('?')) return { ok: false, reason: 'must not contain a query string' };
+  if (raw.includes('#')) return { ok: false, reason: 'must not contain a fragment' };
   if (url.pathname !== '/' && url.pathname !== '') return { ok: false, reason: 'must be an origin with no non-root path' };
   const hostname = url.hostname.toLowerCase();
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]') {
     return { ok: false, reason: 'must use a production hostname, not localhost' };
   }
   return { ok: true, origin: url.origin };

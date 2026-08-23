@@ -95,11 +95,11 @@ export function normalizeSiteOrigin(value) {
 
   if (url.protocol !== 'https:') return null;
   if (url.username || url.password) return null;
-  if (url.search || url.hash) return null;
+  if (raw.includes('?') || raw.includes('#')) return null;
   if (url.pathname !== '/' && url.pathname !== '') return null;
 
   const hostname = url.hostname.toLowerCase();
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return null;
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]') return null;
 
   return url.origin;
 }

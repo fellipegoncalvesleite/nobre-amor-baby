@@ -168,6 +168,89 @@ test('SEO canonical origin validation matrix', async (t) => {
   }
 });
 
+test('CP16A regression — strict canonical origins fail closed across SEO, config and crawlers', async (t) => {
+  const { normalizeSiteOrigin } = await importFresh(paths.seo);
+  const { validateProductionConfig } = await importFresh(paths.checker);
+  const { default: robotsHandler } = await importFresh(paths.robots);
+  const { default: sitemapHandler } = await importFresh(paths.sitemap);
+
+  async function invoke(handler, method, siteUrl) {
+    const previous = { VERCEL_ENV: process.env.VERCEL_ENV, SITE_URL: process.env.SITE_URL };
+    process.env.VERCEL_ENV = 'production';
+    process.env.SITE_URL = siteUrl;
+    const res = makeResponse();
+    try {
+      await handler({ method }, res);
+      return res;
+    } finally {
+      if (previous.VERCEL_ENV === undefined) delete process.env.VERCEL_ENV; else process.env.VERCEL_ENV = previous.VERCEL_ENV;
+      if (previous.SITE_URL === undefined) delete process.env.SITE_URL; else process.env.SITE_URL = previous.SITE_URL;
+    }
+  }
+
+  await t.test('SEO rejects IPv6 loopback represented with brackets by WHATWG URL', () => {
+    assert.equal(normalizeSiteOrigin('https://[::1]'), null);
+  });
+  await t.test('SEO rejects an explicit empty query delimiter', () => {
+    assert.equal(normalizeSiteOrigin('https://shop.example.com/?'), null);
+  });
+  await t.test('SEO rejects an explicit empty fragment delimiter', () => {
+    assert.equal(normalizeSiteOrigin('https://shop.example.com/#'), null);
+  });
+  await t.test('SEO accepts a non-loopback IPv6 HTTPS origin', () => {
+    assert.equal(normalizeSiteOrigin('https://[2001:db8::1]'), 'https://[2001:db8::1]');
+  });
+
+  await t.test('production config rejects IPv6 loopback for both canonical variables', () => {
+    const result = validateProductionConfig(safeEnv({ SITE_URL: 'https://[::1]', VITE_SITE_URL: 'https://[::1]' }));
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((entry) => entry.variable === 'SITE_URL'));
+    assert.ok(result.errors.some((entry) => entry.variable === 'VITE_SITE_URL'));
+  });
+  await t.test('production config rejects explicit empty query delimiters', () => {
+    const result = validateProductionConfig(safeEnv({ SITE_URL: 'https://shop.example.com/?', VITE_SITE_URL: 'https://shop.example.com/?' }));
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((entry) => entry.variable === 'SITE_URL'));
+    assert.ok(result.errors.some((entry) => entry.variable === 'VITE_SITE_URL'));
+  });
+  await t.test('production config rejects explicit empty fragment delimiters', () => {
+    const result = validateProductionConfig(safeEnv({ SITE_URL: 'https://shop.example.com/#', VITE_SITE_URL: 'https://shop.example.com/#' }));
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((entry) => entry.variable === 'SITE_URL'));
+    assert.ok(result.errors.some((entry) => entry.variable === 'VITE_SITE_URL'));
+  });
+  await t.test('production config accepts matching non-loopback IPv6 HTTPS origins', () => {
+    const result = validateProductionConfig(safeEnv({ SITE_URL: 'https://[2001:db8::1]', VITE_SITE_URL: 'https://[2001:db8::1]/' }));
+    assert.equal(result.ok, true, JSON.stringify(result.errors));
+  });
+
+  for (const siteUrl of ['https://[::1]', 'https://shop.example.com/?', 'https://shop.example.com/#']) {
+    await t.test(`robots fails closed for strict-invalid canonical origin ${siteUrl}`, async () => {
+      const res = await invoke(robotsHandler, 'GET', siteUrl);
+      assert.equal(res.statusCode, 503);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+      assert.equal(res.body.trim(), 'User-agent: *\nDisallow: /');
+      assert.doesNotMatch(res.body, /Sitemap:/);
+    });
+    await t.test(`sitemap fails closed for strict-invalid canonical origin ${siteUrl}`, async () => {
+      const res = await invoke(sitemapHandler, 'GET', siteUrl);
+      assert.equal(res.statusCode, 503);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+      assert.doesNotMatch(res.body, /<loc>/);
+    });
+  }
+
+  await t.test('robots HEAD fails closed for IPv6 loopback with empty body', async () => {
+    const res = await invoke(robotsHandler, 'HEAD', 'https://[::1]');
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+    assert.equal(res.body, '');
+  });
+});
+
 test('SEO canonical URLs discard query/hash and preserve homepage slash', async (t) => {
   const { buildCanonicalUrl } = await importFresh(paths.seo);
   await t.test('canonical ignores query/hash', () => {
