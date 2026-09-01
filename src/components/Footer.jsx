@@ -8,6 +8,7 @@ import {
   FiPhone,
 } from 'react-icons/fi';
 import siteConfig from '../config/siteConfig';
+import { COOKIE_CONSENT_EVENT } from '../lib/cookieConsent';
 
 const footerLinks = {
   shop: [
@@ -163,13 +164,24 @@ export default function Footer() {
             <p className="font-sans text-white/60 text-sm text-center md:text-left">
               &copy; {new Date().getFullYear()} {siteConfig.brandName}. Todos os direitos reservados.
             </p>
-            <div className="flex gap-6">
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 md:justify-end">
               <Link to="/privacidade" className="font-sans text-white/70 text-sm hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-pink rounded py-1">
                 Política de Privacidade
               </Link>
               <Link to="/termos" className="font-sans text-white/70 text-sm hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-pink rounded py-1">
                 Termos de Uso
               </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new Event(COOKIE_CONSENT_EVENT));
+                  }
+                }}
+                className="font-sans text-white/70 text-sm hover:text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-baby-pink rounded py-1"
+              >
+                Preferências de cookies
+              </button>
             </div>
           </div>
         </div>

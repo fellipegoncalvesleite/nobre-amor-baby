@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 import SeoManager from './components/SeoManager';
+import CookieConsent from './components/CookieConsent';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -115,6 +116,7 @@ function App() {
       </main>
 
       <Footer />
+      <CookieConsent />
     </div>
   );
 }

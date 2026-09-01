@@ -205,6 +205,19 @@ const pages = {
           dados com terceiros para fins de marketing.
         </p>
 
+        <h2>Cookies e tecnologias semelhantes</h2>
+        <p>
+          Usamos armazenamento local essencial do navegador para manter preferências e recursos
+          da loja funcionando, como tema, sessão, carrinho e acompanhamento de pedidos. Esses
+          recursos essenciais não dependem da autorização para cookies opcionais.
+        </p>
+        <p>
+          Recursos opcionais de análise ou marketing, quando utilizados, dependem da sua escolha
+          no aviso de privacidade. A preferência fica registrada no próprio navegador para que o
+          site não precise perguntar novamente a cada visita. Você pode revisar a escolha a
+          qualquer momento em <strong>Preferências de cookies</strong>, no rodapé do site.
+        </p>
+
         <h2>Exclusão de dados</h2>
         <p>
           Você pode solicitar a exclusão dos seus dados a qualquer momento enviando uma
