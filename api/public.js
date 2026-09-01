@@ -17,6 +17,10 @@ import {
 import { transitionOrderFulfillment } from './_inventory.js';
 import { hasOpenOrderClosure, requestOrderClosure } from './_paymentResolution.js';
 import {
+  replacePlaceholderCollectionImage,
+  replacePlaceholderCollectionImageList,
+} from './_collectionImages.js';
+import {
   buildGlobalRule,
   buildIpRule,
   consumeRateLimits,
@@ -295,10 +299,12 @@ async function handleHome(req, res, supabase) {
     if (cfg.collections_order?.length) {
       const { data: collections } = await query.in('id', cfg.collections_order);
       const orderMap = Object.fromEntries(cfg.collections_order.map((id, index) => [id, index]));
-      result.collections = (collections || []).sort((a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999));
+      result.collections = replacePlaceholderCollectionImageList(
+        (collections || []).sort((a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999)),
+      );
     } else {
       const { data: collections } = await query.order('name');
-      result.collections = collections || [];
+      result.collections = replacePlaceholderCollectionImageList(collections);
     }
   }
 
@@ -368,7 +374,10 @@ async function handleCollections(req, res, supabase) {
       .eq('in_stock', true)
       .order('created_at', { ascending: false });
 
-    return json(res, 200, { collection: data, products: products || [] });
+    return json(res, 200, {
+      collection: replacePlaceholderCollectionImage(data),
+      products: products || [],
+    });
   }
 
   const { data, error } = await supabase
@@ -380,7 +389,7 @@ async function handleCollections(req, res, supabase) {
   if (error) return json(res, 500, { error: 'db_error', message: error.message });
 
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
-  return json(res, 200, { collections: data || [] });
+  return json(res, 200, { collections: replacePlaceholderCollectionImageList(data) });
 }
 
 async function handleOrder(req, res, supabase) {
