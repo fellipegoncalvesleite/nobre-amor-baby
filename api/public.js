@@ -21,6 +21,10 @@ import {
   replacePlaceholderCollectionImageList,
 } from './_collectionImages.js';
 import {
+  replacePlaceholderProductImageList,
+  replacePlaceholderProductImages,
+} from './_productImages.js';
+import {
   buildGlobalRule,
   buildIpRule,
   consumeRateLimits,
@@ -313,10 +317,12 @@ async function handleHome(req, res, supabase) {
     if (cfg.featured_order?.length) {
       const { data: products } = await query.in('id', cfg.featured_order);
       const orderMap = Object.fromEntries(cfg.featured_order.map((id, index) => [id, index]));
-      result.featured = (products || []).sort((a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999));
+      result.featured = replacePlaceholderProductImageList(
+        (products || []).sort((a, b) => (orderMap[a.id] ?? 999) - (orderMap[b.id] ?? 999)),
+      );
     } else {
       const { data: products } = await query.eq('featured', true).order('created_at', { ascending: false }).limit(12);
-      result.featured = products || [];
+      result.featured = replacePlaceholderProductImageList(products);
     }
   }
 
@@ -336,7 +342,7 @@ async function handleProducts(req, res, supabase) {
       .single();
 
     if (error || !data) return json(res, 404, { error: 'not_found', message: 'Produto não encontrado.' });
-    return json(res, 200, { product: data });
+    return json(res, 200, { product: replacePlaceholderProductImages(data) });
   }
 
   let query = supabase.from('products').select('*').eq('is_public', true);
@@ -350,7 +356,7 @@ async function handleProducts(req, res, supabase) {
   if (error) return json(res, 500, { error: 'db_error', message: error.message });
 
   res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
-  return json(res, 200, { products: data || [] });
+  return json(res, 200, { products: replacePlaceholderProductImageList(data) });
 }
 
 async function handleCollections(req, res, supabase) {
@@ -376,7 +382,7 @@ async function handleCollections(req, res, supabase) {
 
     return json(res, 200, {
       collection: replacePlaceholderCollectionImage(data),
-      products: products || [],
+      products: replacePlaceholderProductImageList(products),
     });
   }
 
